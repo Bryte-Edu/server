@@ -1,0 +1,3 @@
+[submodule "lib/koog"]
+	path = lib/koog
+	url = https://github.com/JetBrains/koog
