@@ -21,6 +21,8 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":mistral"))
 
+    implementation(kotlin("reflect"))
+
     implementation("io.github.jan-tennert.supabase:supabase-kt:3.3.0-beta-1")
     implementation("io.github.jan-tennert.supabase:auth-kt:3.3.0-beta-1")
     implementation("io.github.jan-tennert.supabase:storage-kt:3.3.0-beta-1")
@@ -37,11 +39,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-server:$kotlinx_rpc_version")
     implementation("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-client:$kotlinx_rpc_version")
-    implementation("ai.koog:koog-ktor:$koog_version") {
-        exclude(group = "ai.koog", module = "agents-core")
-    }
-    implementation(project(":lib:koog:agents:agents-core"))
-
+    implementation(project(":koog:koog-ktor"))
     implementation("io.insert-koin:koin-ktor:$koin_version")
     implementation("io.insert-koin:koin-logger-slf4j:$koin_version")
     implementation("io.ktor:ktor-server-html-builder")
@@ -61,6 +59,7 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("io.ktor:ktor-server-config-yaml")
     implementation("io.ktor:ktor-client-cio-jvm:3.3.2")
+    implementation("io.ktor:ktor-server-sse:3.3.2")
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }

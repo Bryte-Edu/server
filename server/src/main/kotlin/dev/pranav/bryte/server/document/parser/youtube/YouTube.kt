@@ -44,7 +44,7 @@ class YouTube: DocParser<String> {
             },
             model = GoogleModels.Gemini2_5Flash,
             fixingParser = StructureFixingParser(
-                fixingModel = GoogleModels.Gemini2_0FlashLite001,
+                model = GoogleModels.Gemini2_0FlashLite001,
                 retries = 4
             )
         )
@@ -53,7 +53,7 @@ class YouTube: DocParser<String> {
             println("Failed to parse transcript structure: ${it.message}")
             it.printStackTrace()
             return null
-        }.structure
+        }.data
 
         return ParsedDocument(
             input,

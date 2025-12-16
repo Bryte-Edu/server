@@ -2,6 +2,7 @@ package dev.pranav.model.quiz
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.reflect.full.findAnnotation
 
 @Serializable
 data class Question(
@@ -22,12 +23,13 @@ data class Question(
 }
 
 @Serializable
-sealed class Content(val type: String) {
+sealed class Content {
 
     @Serializable
+    @SerialName("SPOT_THE_ERROR")
     data class SpotTheError(
         val steps: List<Step>, val scenario: String, val errorStepIndex: Int
-    ) : Content("SPOT_THE_ERROR") {
+    ) : Content() {
         @Serializable
         data class Step(
             val isCorrect: Boolean,
@@ -37,16 +39,26 @@ sealed class Content(val type: String) {
     }
 
     @Serializable
+    @SerialName("MULTIPLE_CHOICE")
     data class MultipleChoice(
         val question: String,
         val options: List<String>,
         val correctOptionIndex: Int,
-    ) : Content("MULTIPLE_CHOICE")
+    ) : Content()
 
     @Serializable
+    @SerialName("MATCH")
     data class MatchTheFollowing(
         val leftItems: List<String>,
         val rightItems: List<String>,
         val correctMatches: List<Pair<Int, Int>>
-    ) : Content("MATCH")
+    ) : Content()
 }
+
+val Content.type: String
+    get() {
+        val serialNameAnnotation = this::class.findAnnotation<SerialName>()
+            ?: throw IllegalStateException("Sealed subclass ${this::class.simpleName} must have a @SerialName annotation.")
+
+        return serialNameAnnotation.value
+    }

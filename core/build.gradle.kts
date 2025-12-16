@@ -17,6 +17,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(kotlin("reflect"))
+
             api("org.jetbrains.kotlinx:kotlinx-rpc-krpc-serialization-json:$kotlinx_rpc_version")
             api("org.jetbrains.kotlinx:kotlinx-rpc-core:$kotlinx_rpc_version")
         }

@@ -1,13 +1,11 @@
 package dev.pranav.bryte.server.ai
 
 import ai.koog.agents.core.agent.AIAgent
-import ai.koog.agents.core.agent.AIAgentService
-import ai.koog.agents.core.agent.FunctionalAIAgent
 import ai.koog.agents.core.agent.FunctionalAIAgentService
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.core.agent.context.AIAgentContext
 import ai.koog.agents.core.agent.functionalStrategy
 import ai.koog.agents.core.agent.isRunning
+import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
@@ -17,19 +15,17 @@ import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.agents.core.tools.reflect.tools
-import ai.koog.agents.ext.tool.AskUser
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.embeddings.local.LLMEmbedder
 import ai.koog.prompt.dsl.Prompt
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
-import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.markdown.markdown
 import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.prompt.streaming.filterTextOnly
-import ai.koog.prompt.structure.markdown.MarkdownStructuredDataDefinition
+import ai.koog.prompt.structure.markdown.MarkdownStructureDefinition
 import ai.koog.rag.vector.EmbeddingBasedDocumentStorage
 import ai.koog.rag.vector.InMemoryVectorStorage
 import dev.pranav.bryte.server.GEMINI_API_KEY
@@ -38,50 +34,47 @@ import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
 import dev.pranav.bryte.server.models.DocumentChunk
 import dev.pranav.bryte.server.models.Session
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
-import dev.pranav.bryte.server.util.ext.documentChunks
-import dev.pranav.bryte.server.util.ext.sessions
-import dev.pranav.bryte.server.util.ext.supabase
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import dev.pranav.model.quiz.Content
 import dev.pranav.model.quiz.Question
-import io.ktor.server.html.insert
-import jdk.internal.agent.resources.agent
+import dev.pranav.model.quiz.type
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlin.run
 
 
-suspend fun main() {
-    val sessions by supabase.sessions()
-    val documentChunks by supabase.documentChunks()
-    val generator = QuestionGenerator(sessions.getById("ef265311-2207-41b2-a59b-452c9f119c98")!!, documentChunks)
-    generator.generateQuestions().let {
-        println("Generated questions")
-
-        it.collect {
-            println(it)
-        }
-
-        println()
-        println("First batch complete")
-        println()
-        println()
-
-    }
-
-    println("Generating more questions...")
-
-    generator.generateQuestions().let {
-        println("Generated more questions")
-
-        it.collect {
-            println(it)
-        }
-    }
-
-}
+//suspend fun main() = runBlocking {
+////    val sessions by supabase.sessions()
+////    val documentChunks by supabase.documentChunks()
+////    val generator = QuestionGenerator(sessions.getById("ef265311-2207-41b2-a59b-452c9f119c98")!!, documentChunks)
+////    generator.generateQuestions().let {
+////        println("Generated questions")
+////
+////        it.collect {
+////            println(it)
+////        }
+////
+////        println()
+////        println("First batch complete")
+////
+////    }
+//
+//    val service = AIAgentService(
+//        promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
+//        agentConfig = AIAgentConfig(
+//            prompt = Prompt.build("Test Prompt") {
+//                system("You are a helpful assistant.")
+//            }, model = GoogleModels.Gemini2_5Flash, maxAgentIterations = 5
+//        ),
+//        singleRunStrategy()
+//    )
+//
+//    val agent = service.createAgent()
+//    println(agent.run("Hello Jon"))
+//    println(agent.run("What was my last message?"))
+//
+//}
 
 /**
  * AI-powered question generator that creates questions from document chunks.
@@ -219,8 +212,8 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
 
 
         val markdownStream =
-            //generationAgent.run("Generate unique questions based on the content")
-            agentService.createAgentAndRun("Generate unique questions based on the content")
+            generationAgent.run("Generate unique questions based on the content")
+//            agentService.createAgentAndRun("Generate unique questions based on the content")
         return parseMDStreamToQuestions(markdownStream, toolset)
     }
 
@@ -292,6 +285,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
         return questions
     }
 
+    @OptIn(InternalAgentsApi::class)
     private fun createAgent(toolset: ToolSet) {
         val systemPrompt = """
             You are an **Expert Question Generator** AI specializing in **critical thinking, inference, and foundational recall**. Your task is to process the available document content and generate a batch of high-quality, relevant, and diverse questions (MULTIPLE_CHOICE, SPOT_THE_ERROR, MATCH_THE_FOLLOWING).
@@ -314,7 +308,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
         val agentConfig = AIAgentConfig(
             prompt = Prompt.build("Question Generation Prompt") {
                 system(systemPrompt)
-            }, model = GoogleModels.Gemini2_5Flash, maxAgentIterations = 50
+            }, model = GoogleModels.Gemini2_5FlashLite, maxAgentIterations = 50, enforceSingleRun = false
         )
 
 
@@ -368,8 +362,8 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
             requestLLMStreaming(input, questionsStructure)
         }
 
-        agentService = AIAgentService(
-            promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
+        agentService = FunctionalAIAgentService<String, Flow<StreamFrame>>(
+            simpleGoogleAIExecutor(GEMINI_API_KEY),
             agentConfig = AIAgentConfig(
                 prompt = Prompt.build("Question Generation Prompt") {
                     system(systemPrompt)
@@ -396,7 +390,6 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                 }
             }
         )
-
     }
 
     suspend fun parseMDStreamToQuestions(markdownStream: Flow<StreamFrame>, toolset: RAGToolset): Flow<Question> {
@@ -456,8 +449,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                         }
                     }
 
-                    emit(
-                        Question(
+                    val question = Question(
                             sessionId = session.id,
                             chunkId = toolset.currentTopicId(),
                             page = toolset.index + 1,
@@ -466,7 +458,8 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                             content = content,
                             explanation = explanation,
                         )
-                    )
+
+                    emit(question)
 
                     correctMatches.clear()
                     rows.clear()
@@ -579,7 +572,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
     }
 
     companion object {
-        val questionsStructure = MarkdownStructuredDataDefinition("questionsList", schema = {
+        val questionsStructure = MarkdownStructureDefinition("questionsList", schema = {
             markdown {
                 bulleted {
                     item {

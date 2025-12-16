@@ -20,6 +20,8 @@ kotlin {
             api(project(":core"))
             api("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-client:$kotlinx_rpc_version")
             api("io.ktor:ktor-client-core:$ktor_version")
+            api("io.ktor:ktor-client-cio-jvm:$ktor_version")
+
         }
     }
 }

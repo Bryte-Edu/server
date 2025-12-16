@@ -13,4 +13,5 @@ include(":server")
 include(":core")
 include(":client")
 include(":mistral")
-include(":lib:koog:agents:agents-core")
+
+includeBuild("lib/koog")
