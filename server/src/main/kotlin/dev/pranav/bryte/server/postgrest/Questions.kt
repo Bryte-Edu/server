@@ -1,8 +1,6 @@
 package dev.pranav.bryte.server.postgrest
 
-import dev.pranav.bryte.server.models.DocumentChunk
-import dev.pranav.bryte.server.models.Session
-import dev.pranav.model.quiz.Question
+import dev.pranav.bryte.model.quiz.Question
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.PostgrestQueryBuilder

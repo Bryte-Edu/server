@@ -1,8 +1,7 @@
-package dev.pranav.model.quiz
+package dev.pranav.bryte.model.quiz
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlin.reflect.full.findAnnotation
 
 @Serializable
 data class Question(
@@ -53,12 +52,11 @@ sealed class Content {
         val rightItems: List<String>,
         val correctMatches: List<Pair<Int, Int>>
     ) : Content()
+
+    val type: String
+        get() = when (this) {
+            is MultipleChoice -> "MULTIPLE_CHOICE"
+            is SpotTheError -> "SPOT_THE_ERROR"
+            is MatchTheFollowing -> "MATCH"
+        }
 }
-
-val Content.type: String
-    get() {
-        val serialNameAnnotation = this::class.findAnnotation<SerialName>()
-            ?: throw IllegalStateException("Sealed subclass ${this::class.simpleName} must have a @SerialName annotation.")
-
-        return serialNameAnnotation.value
-    }

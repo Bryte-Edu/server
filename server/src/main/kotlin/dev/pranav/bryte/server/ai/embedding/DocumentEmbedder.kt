@@ -4,11 +4,14 @@ import ai.koog.embeddings.base.Embedder
 import ai.koog.embeddings.base.Vector
 import ai.koog.rag.base.files.DocumentProvider
 import ai.koog.rag.vector.DocumentEmbedder
-import dev.pranav.bryte.server.models.DocumentChunk
+import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
+import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.supabase
 import io.github.jan.supabase.postgrest.postgrest
 import java.nio.file.Path
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class TextDocumentProvider : DocumentProvider<Path, String> {
     override suspend fun document(path: Path): String = path.toString()
@@ -81,6 +84,7 @@ class TextDocumentProvider : DocumentProvider<Path, String> {
 
 open class TextDocumentEmbedder(
     private val embedder: Embedder,
+    private val documentTopics: Set<DocumentChunk>,
     private val documentChunks: DocumentChunkRepository
 ) : DocumentEmbedder<String> {
 
@@ -90,18 +94,41 @@ open class TextDocumentEmbedder(
      * @param text The text to embed.
      * @return A vector representation of the provided text.
      */
+    @OptIn(ExperimentalUuidApi::class)
     override suspend fun embed(text: String): Vector {
+        if (text.isBlank()) return Vector(listOf())
+
         val id = text
 
-        val chunk = documentChunks.getById(id).let {
+        println("Embedding text chunk with id: $id")
+
+        runCatching {
+            Uuid.parse(id)
+        }.getOrElse {
+            return@getOrElse try {
+                embedder.embed(text.removePrefix(id))
+            } catch (e: Exception) {
+            println("Failed to embed data: $text")
+                e.printStackTrace()
+            Vector(listOf())
+        }
+        }
+
+        val chunk = documentTopics.find { it.id == id }?.let {
             it.embedding?.let { return Vector(it) }
             it
         }
 
-        val embedding = embedder.embed(text.removePrefix(id))
+        val embedding = try {
+            embedder.embed(text.removePrefix(id))
+        } catch (e: Exception) {
+            println("Embedding failed for chunk id: $id, error: ${e.message}")
+            Vector(listOf())
+        }
 
-        chunk.embedding = embedding.values
+        chunk?.embedding = embedding.values
 
+        if (chunk != null)
         documentChunks.upsert(chunk)
 
         return embedding

@@ -1,6 +1,6 @@
 package dev.pranav.bryte.server.postgrest
 
-import dev.pranav.bryte.server.models.Flashcard
+import dev.pranav.bryte.model.card.Flashcard
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.PostgrestQueryBuilder
@@ -12,6 +12,12 @@ class FlashcardRepository(val postgrest: PostgrestQueryBuilder) {
     suspend fun getByDocumentId(documentId: String): List<Flashcard> {
         return postgrest.select {
             filter { eq("document_id", documentId) }
+        }.decodeList()
+    }
+
+    suspend fun getByTopicId(topicId: String): List<Flashcard> {
+        return postgrest.select {
+            filter { eq("chunk_id", topicId) }
         }.decodeList()
     }
 

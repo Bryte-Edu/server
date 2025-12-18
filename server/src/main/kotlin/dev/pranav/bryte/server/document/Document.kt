@@ -1,7 +1,6 @@
 package dev.pranav.bryte.server.document
 
-import dev.pranav.bryte.server.models.DocumentChunk
-import dev.pranav.bryte.server.models.Image
+import dev.pranav.bryte.model.session.Image
 
 /**
  * Data class representing a parsed document with its details and topics.

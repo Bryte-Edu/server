@@ -1,13 +1,10 @@
-package dev.pranav
+package dev.pranav.bryte
 
-import dev.pranav.model.SessionDetails
-import dev.pranav.model.quiz.Question
+import dev.pranav.bryte.model.SessionDetails
+import dev.pranav.bryte.model.quiz.Question
 import kotlinx.coroutines.flow.Flow
 import kotlinx.rpc.annotations.Rpc
 import kotlinx.serialization.Serializable
-
-@Serializable
-data class Data(val value: String)
 
 @Rpc
 interface SessionService {

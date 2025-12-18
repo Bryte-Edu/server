@@ -1,4 +1,4 @@
-package dev.pranav.bryte.server.models
+package dev.pranav.bryte.model.session
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

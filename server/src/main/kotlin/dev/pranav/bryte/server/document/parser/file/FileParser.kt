@@ -6,20 +6,19 @@ import dev.pranav.bryte.server.document.DocumentType
 import dev.pranav.bryte.server.document.ParsedDocument
 import dev.pranav.bryte.server.document.DocParser
 import dev.pranav.bryte.server.document.Topic
-import dev.pranav.bryte.server.models.Image
+import dev.pranav.bryte.model.session.Image
 import kotlinx.serialization.Serializable
 import kotlin.collections.flatMap
 
-
-fun main() {
-    val fileUrl = "https://dspace.mit.edu/bitstream/handle/1721.1/144261/12525_2022_Article_570.pdf"
-    val parser = FileParser()
-
-    kotlinx.coroutines.runBlocking {
-        val parsedDocument = parser.parseDocument(fileUrl)
-        println("Parsed Document: $parsedDocument")
-    }
-}
+//fun main() {
+//    val fileUrl = "https://dspace.mit.edu/bitstream/handle/1721.1/144261/12525_2022_Article_570.pdf"
+//    val parser = FileParser()
+//
+//    kotlinx.coroutines.runBlocking {
+//        val parsedDocument = parser.parseDocument(fileUrl)
+//        println("Parsed Document: $parsedDocument")
+//    }
+//}
 
 class FileParser : DocParser<String> {
     override suspend fun parseDocument(input: String): ParsedDocument {

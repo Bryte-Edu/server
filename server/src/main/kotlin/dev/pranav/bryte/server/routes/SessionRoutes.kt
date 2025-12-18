@@ -1,15 +1,12 @@
 package dev.pranav.bryte.server.routes
 
-import dev.pranav.bryte.server.document.DocumentType
+import dev.pranav.bryte.model.session.DocumentChunk
+import dev.pranav.bryte.model.session.DocumentItem
+import dev.pranav.bryte.model.session.Session
 import dev.pranav.bryte.server.models.CreateSessionRequest
-import dev.pranav.bryte.server.models.DocumentChunk
-import dev.pranav.bryte.server.models.DocumentItem
-import dev.pranav.bryte.server.models.FlashcardRequest
-import dev.pranav.bryte.server.models.Session
 import dev.pranav.bryte.server.models.SessionCreateResponse
 import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.documents
-import dev.pranav.bryte.server.util.ext.flashcards
 import dev.pranav.bryte.server.util.ext.getDocumentParser
 import dev.pranav.bryte.server.util.ext.sessions
 import dev.pranav.bryte.server.util.ext.supabase
@@ -21,7 +18,6 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import kotlinx.css.source
 
 
 fun Application.configureSessionRoutes() {

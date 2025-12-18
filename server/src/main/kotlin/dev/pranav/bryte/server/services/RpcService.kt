@@ -1,13 +1,13 @@
 package dev.pranav.bryte.server.services
 
-import dev.pranav.SessionService
+import dev.pranav.bryte.SessionService
+import dev.pranav.bryte.model.SessionDetails
+import dev.pranav.bryte.model.quiz.Question
+import dev.pranav.bryte.model.session.Session
 import dev.pranav.bryte.server.ai.QuestionGenerator
-import dev.pranav.bryte.server.models.Session
 import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.questions
 import dev.pranav.bryte.server.util.ext.supabase
-import dev.pranav.model.SessionDetails
-import dev.pranav.model.quiz.Question
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 
@@ -18,9 +18,11 @@ class SessionServiceImpl(val session: Session) : SessionService {
 
   init {
     val chunks by supabase.documentChunks()
+    val questions by supabase.questions()
     generator = QuestionGenerator(
       session,
-      chunks
+      chunks,
+      questions
     )
   }
 

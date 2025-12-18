@@ -11,7 +11,7 @@ import dev.pranav.bryte.server.document.DocParser
 import dev.pranav.bryte.server.document.DocumentType
 import dev.pranav.bryte.server.document.ParsedDocument
 import dev.pranav.bryte.server.document.Topic
-import dev.pranav.bryte.server.models.Image
+import dev.pranav.bryte.model.session.Image
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

@@ -1,9 +1,7 @@
 package dev.pranav.bryte.server.ai
 
 import ai.koog.agents.core.agent.AIAgent
-import ai.koog.agents.core.agent.FunctionalAIAgentService
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.core.agent.functionalStrategy
 import ai.koog.agents.core.agent.isRunning
 import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.forwardTo
@@ -28,20 +26,25 @@ import ai.koog.prompt.streaming.filterTextOnly
 import ai.koog.prompt.structure.markdown.MarkdownStructureDefinition
 import ai.koog.rag.vector.EmbeddingBasedDocumentStorage
 import ai.koog.rag.vector.InMemoryVectorStorage
+import dev.pranav.bryte.model.quiz.Content
+import dev.pranav.bryte.model.quiz.Question
 import dev.pranav.bryte.server.GEMINI_API_KEY
 import dev.pranav.bryte.server.MISTRAL_API_KEY
 import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
-import dev.pranav.bryte.server.models.DocumentChunk
-import dev.pranav.bryte.server.models.Session
+import dev.pranav.bryte.model.session.DocumentChunk
+import dev.pranav.bryte.model.session.Session
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
+import dev.pranav.bryte.server.postgrest.QuestionRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
-import dev.pranav.model.quiz.Content
-import dev.pranav.model.quiz.Question
-import dev.pranav.model.quiz.type
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.css.h1
+import kotlinx.css.h2
+import kotlinx.css.h3
+import kotlinx.css.h4
+import kotlinx.css.h5
 
 
 //suspend fun main() = runBlocking {
@@ -81,13 +84,13 @@ import kotlinx.coroutines.runBlocking
  * This class handles the logic for generating different types of questions
  * using Koog AI framework.
  */
-class QuestionGenerator(val session: Session, private val documentChunks: DocumentChunkRepository) {
+class QuestionGenerator(val session: Session, private val documentChunks: DocumentChunkRepository, private val questions: QuestionRepository) {
 
     var exhausted = false
 
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
-            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed), documentChunks
+            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed), documentTopics, documentChunks
         )
     }
 
@@ -144,9 +147,13 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
             @LLMDescription("The query to search for related information.") query: String
         ): String {
             val results = mutableListOf<Pair<String, String>>()
+
             documentStorage.rankDocuments(query).collect {
-                println("RAG search result score: ${it.similarity}, content: ${it.document.take(100)}...")
-                results.add(it.document.substringBefore('\n') to it.document.substringAfter('\n'))
+                if (it.similarity == 0.0) return@collect
+                val document = documentTopics.find { topic -> topic.id == it.document }
+                    ?: return@collect
+                println("RAG search result score: ${it.similarity}, content: ${document.content.take(100)}...")
+                results.add(document.header to document.content)
             }
 
             println("Total RAG search results: ${results.size} for query: $query")
@@ -190,8 +197,6 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
     }
 
     private lateinit var generationAgent: AIAgent<String, Flow<StreamFrame>>
-
-    private lateinit var agentService: FunctionalAIAgentService<String, Flow<StreamFrame>>
 
     /**
      * Generates questions from a list of document chunks.
@@ -339,60 +344,21 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                     onAgentStarting { eventContext: AgentStartingContext ->
                         println("Starting agent: ${eventContext.agent.id}")
                     }
-                    onLLMStreamingFrameReceived {
-                        (it.streamFrame as? StreamFrame.Append)?.let { frame ->
-//                                print(frame.text)
-                        }
-                    }
-
                     onToolCallStarting {
-                        println("Tool call started: ${it.tool.name}")
+                        println("Tool call started: ${it.toolName}")
                     }
 
                     onToolCallCompleted {
-                        if (it.tool.name == "contentExhausted") {
+                        if (it.toolName == "contentExhausted") {
                             exhausted = true
                             println("Exhaustion tool called. Ending question generation.")
                         }
                     }
                 }
             })
-
-        val strategy = functionalStrategy<String, Flow<StreamFrame>>("question-generator-functional") { input ->
-            requestLLMStreaming(input, questionsStructure)
-        }
-
-        agentService = FunctionalAIAgentService<String, Flow<StreamFrame>>(
-            simpleGoogleAIExecutor(GEMINI_API_KEY),
-            agentConfig = AIAgentConfig(
-                prompt = Prompt.build("Question Generation Prompt") {
-                    system(systemPrompt)
-                }, model = GoogleModels.Gemini2_5Flash, maxAgentIterations = 50
-            ),
-            strategy = strategy,
-            toolRegistry = ToolRegistry {
-                tools(toolset)
-            },
-            installFeatures = {
-                install(EventHandler) {
-                    onAgentStarting { eventContext: AgentStartingContext ->
-                        println("Starting agent: ${eventContext.agent.id}")
-                    }
-                    onLLMStreamingFrameReceived {
-                        (it.streamFrame as? StreamFrame.Append)?.let { frame ->
-                            print(frame.text)
-                        }
-                    }
-
-                    onToolCallStarting {
-                        println("Tool call started: ${it.tool.name}")
-                    }
-                }
-            }
-        )
     }
 
-    suspend fun parseMDStreamToQuestions(markdownStream: Flow<StreamFrame>, toolset: RAGToolset): Flow<Question> {
+    fun parseMDStreamToQuestions(markdownStream: Flow<StreamFrame>, toolset: RAGToolset): Flow<Question> {
         return flow {
             markdownStreamingParser {
                 var type = ""
@@ -450,14 +416,16 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                     }
 
                     val question = Question(
-                            sessionId = session.id,
-                            chunkId = toolset.currentTopicId(),
-                            page = toolset.index + 1,
-                            type = content.type,
-                            difficulty = difficulty,
-                            content = content,
-                            explanation = explanation,
-                        )
+                        sessionId = session.id,
+                        chunkId = toolset.currentTopicId(),
+                        page = toolset.index + 1,
+                        type = content.type,
+                        difficulty = difficulty,
+                        content = content,
+                        explanation = explanation,
+                    )
+
+                    questions.insert(question)
 
                     emit(question)
 
@@ -480,7 +448,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
 
                 onHeader(5) { headerText ->
                     if (headerText.isEmpty()) return@onHeader
-                    difficulty = headerText
+                    difficulty = headerText.lowercase()
                 }
 
                 onHeader(3) { headerText ->
@@ -498,8 +466,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                     }
                 }
 
-                onTable { headers, row ->
-//                    println("Table row FOUND (RAW): $row")
+                onTable { _, row ->
                     if (row.size >= 2) {
                         val leftItem = row[0]
                         val rightItem = row[1]
@@ -553,7 +520,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                             }
                         }
 
-                        emit(
+                        val question =
                             Question(
                                 sessionId = session.id,
                                 chunkId = toolset.currentTopicId(),
@@ -563,7 +530,11 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
                                 content = content,
                                 explanation = explanation,
                             )
-                        )
+
+                        questions.insert(question)
+
+                        emit(question)
+
                     }
                 }
 

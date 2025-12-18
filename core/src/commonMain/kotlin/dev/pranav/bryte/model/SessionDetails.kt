@@ -1,4 +1,4 @@
-package dev.pranav.model
+package dev.pranav.bryte.model
 
 import kotlinx.serialization.Serializable
 

@@ -1,6 +1,6 @@
-package dev.pranav.bryte.server.models
+package dev.pranav.bryte.model.session
 
-import dev.pranav.bryte.server.util.serialization.VectorDeserializer
+import dev.pranav.bryte.model.serializer.VectorSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -14,7 +14,7 @@ data class DocumentChunk(
     val header: String,
     val content: String,
     val images: List<Image>,
-    @Serializable(with = VectorDeserializer::class)
+    @Serializable(with = VectorSerializer::class)
     var embedding: List<Double>? = null
 )
 
