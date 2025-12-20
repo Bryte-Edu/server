@@ -1,21 +1,21 @@
 package dev.pranav.bryte.server
 
-import dev.pranav.bryte.server.services.SampleService
+import dev.pranav.bryte.SessionService
+import dev.pranav.bryte.server.plugins.configureSerialization
+import dev.pranav.bryte.server.plugins.configureSockets
 import dev.pranav.bryte.server.routes.configureRpcRoutes
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
-import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlinx.rpc.krpc.ktor.client.Krpc
 import kotlinx.rpc.krpc.ktor.client.rpc
 import kotlinx.rpc.krpc.ktor.client.rpcConfig
 import kotlinx.rpc.krpc.serialization.json.json
 import kotlinx.rpc.withService
-
-import dev.pranav.bryte.server.plugins.configureSockets
-import dev.pranav.bryte.server.plugins.configureSerialization
+import org.junit.jupiter.api.assertDoesNotThrow
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class ApplicationTest {
 
@@ -50,11 +50,12 @@ class ApplicationTest {
             }
         }
 
-        val service = rpcClient.withService<SampleService>()
+        val service = rpcClient.withService<SessionService>()
 
-        val response = service.hello("client")
 
-        assertEquals("Hello, client!", response)
+        assertDoesNotThrow {
+            service.details()
+        }
     }
 
 }

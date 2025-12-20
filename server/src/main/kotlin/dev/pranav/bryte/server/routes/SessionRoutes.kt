@@ -3,21 +3,16 @@ package dev.pranav.bryte.server.routes
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.model.session.DocumentItem
 import dev.pranav.bryte.model.session.Session
+import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.models.CreateSessionRequest
 import dev.pranav.bryte.server.models.SessionCreateResponse
-import dev.pranav.bryte.server.util.ext.documentChunks
-import dev.pranav.bryte.server.util.ext.documents
-import dev.pranav.bryte.server.util.ext.getDocumentParser
-import dev.pranav.bryte.server.util.ext.sessions
-import dev.pranav.bryte.server.util.ext.supabase
-import dev.pranav.bryte.server.util.ext.userId
-import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.Application
-import io.ktor.server.auth.authenticate
-import io.ktor.server.request.receive
-import io.ktor.server.response.respond
-import io.ktor.server.routing.get
-import io.ktor.server.routing.routing
+import dev.pranav.bryte.server.util.ext.*
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 
 
 fun Application.configureSessionRoutes() {
@@ -43,13 +38,14 @@ fun Application.configureSessionRoutes() {
                         type = request.docType.name,
                         source = request.source,
                         metadata = mapOf(
-                            "num_pages" to parsed.topics.maxOf { it.pages.max() })
+                            "num_pages" to parsed.topics.maxOf { it.pages.max() }.toString()
+                        )
                     )
                 )
 
-                documentChunks.insert(parsed.topics.map {
+                val chunks = documentChunks.insert(parsed.topics.map {
                     DocumentChunk(
-                        documentId = documentItem!!.id,
+                        documentId = documentItem.id,
                         header = it.header,
                         content = it.content,
                         images = it.images,
@@ -57,10 +53,13 @@ fun Application.configureSessionRoutes() {
                     )
                 })
 
+                val graph = Neo4jManager()
+                graph.ingestDocument(documentItem, chunks)
+
                 val session = sessions.insert(
                     Session(
                         userId = userId,
-                        documentId = documentItem!!.id,
+                        documentId = documentItem.id,
                         difficulty = "medium",
                     )
                 )

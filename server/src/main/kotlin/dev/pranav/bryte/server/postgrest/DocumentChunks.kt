@@ -21,6 +21,10 @@ class DocumentChunkRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeList()
     }
 
+    suspend fun getAllChunks(): List<DocumentChunk> {
+        return postgrest.select().decodeList()
+    }
+
     suspend fun insert(chunk: DocumentChunk): DocumentChunk? {
         return postgrest.insert(chunk) {
             select()

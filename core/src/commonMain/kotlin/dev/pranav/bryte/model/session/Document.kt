@@ -11,7 +11,7 @@ data class DocumentItem(
     val title: String,
     @SerialName("created_at")
     val createdAt: String = "",
-    val metadata: Map<String, Int> = emptyMap(),
+    val metadata: Map<String, String> = emptyMap(),
     val type: String = "pdf",
     val source: String
 )

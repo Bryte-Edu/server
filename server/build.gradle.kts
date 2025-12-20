@@ -15,6 +15,10 @@ plugins {
 
 application {
     mainClass = "io.ktor.server.cio.EngineMain"
+
+    java {
+
+    }
 }
 
 dependencies {
@@ -28,6 +32,8 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:storage-kt:3.3.0-beta-1")
     implementation("io.github.jan-tennert.supabase:postgrest-kt:3.3.0-beta-1")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1-0.6.x-compat")
+
+    implementation("org.neo4j:neo4j:2025.10.1")
 
     implementation("com.github.teamnewpipe:NewPipeExtractor:6f51a23fa5")
 

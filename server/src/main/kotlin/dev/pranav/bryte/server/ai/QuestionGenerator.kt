@@ -3,7 +3,6 @@ package dev.pranav.bryte.server.ai
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.agent.isRunning
-import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
@@ -28,11 +27,12 @@ import ai.koog.rag.vector.EmbeddingBasedDocumentStorage
 import ai.koog.rag.vector.InMemoryVectorStorage
 import dev.pranav.bryte.model.quiz.Content
 import dev.pranav.bryte.model.quiz.Question
+import dev.pranav.bryte.model.session.DocumentChunk
+import dev.pranav.bryte.model.session.Session
 import dev.pranav.bryte.server.GEMINI_API_KEY
 import dev.pranav.bryte.server.MISTRAL_API_KEY
 import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
-import dev.pranav.bryte.model.session.DocumentChunk
-import dev.pranav.bryte.model.session.Session
+import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.QuestionRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
@@ -40,11 +40,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.css.h1
-import kotlinx.css.h2
-import kotlinx.css.h3
-import kotlinx.css.h4
-import kotlinx.css.h5
 
 
 //suspend fun main() = runBlocking {
@@ -84,9 +79,28 @@ import kotlinx.css.h5
  * This class handles the logic for generating different types of questions
  * using Koog AI framework.
  */
-class QuestionGenerator(val session: Session, private val documentChunks: DocumentChunkRepository, private val questions: QuestionRepository) {
+class QuestionGenerator(
+    val session: Session,
+    private val documentChunks: DocumentChunkRepository,
+    private val questions: QuestionRepository
+) : AutoCloseable {
 
     var exhausted = false
+
+    private val neo4j = Neo4jManager()
+
+    private data class GraphRagConfig(
+        val topK: Int = 6,
+        val neighborLimit: Int = 5,
+        val docBias: Double = 0.15,
+        val crossDocPenalty: Double = 0.05
+    )
+
+    private val graphRagConfig = GraphRagConfig()
+
+    override fun close() {
+        neo4j.close()
+    }
 
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
@@ -142,28 +156,70 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
         }
 
         @Tool
-        @LLMDescription("Search for related information about the given query.")
+        @LLMDescription("Search for related information about the given query. Prioritizes the current document but can bridge across the user's other documents when useful.")
         suspend fun search(
             @LLMDescription("The query to search for related information.") query: String
         ): String {
-            val results = mutableListOf<Pair<String, String>>()
+            return graphContext(query = query, topK = graphRagConfig.topK, neighborLimit = graphRagConfig.neighborLimit)
+        }
 
-            documentStorage.rankDocuments(query).collect {
-                if (it.similarity == 0.0) return@collect
-                val document = documentTopics.find { topic -> topic.id == it.document }
-                    ?: return@collect
-                println("RAG search result score: ${it.similarity}, content: ${document.content.take(100)}...")
-                results.add(document.header to document.content)
-            }
+        @Tool
+        @LLMDescription("Return a graph-augmented context pack for a query: top matches plus their strongest related concepts. Uses weighted doc-priority retrieval.")
+        suspend fun graphContext(
+            @LLMDescription("The query to retrieve context for.") query: String,
+            @LLMDescription("Number of starting chunks to retrieve from the vector index.") topK: Int = 6,
+            @LLMDescription("Max number of related concepts to include per chunk.") neighborLimit: Int = 5
+        ): String {
+            if (query.isBlank()) return "Query is blank."
 
-            println("Total RAG search results: ${results.size} for query: $query")
+            val queryEmbedding = embedder.embed(query).values
+            if (queryEmbedding.isEmpty()) return "No embedding produced for query."
+
+            val results = neo4j.searchKnowledgeGraphWeighted(
+                queryEmbedding = queryEmbedding,
+                userId = session.userId,
+                focusDocumentId = session.documentId,
+                topK = topK,
+                neighborLimit = neighborLimit,
+                docBias = graphRagConfig.docBias,
+                crossDocPenalty = graphRagConfig.crossDocPenalty
+            )
 
             return markdown {
-                h2("Search Results for: $query")
-                results.forEach { (title, content) ->
-                    h3(title)
-                    text(content)
+                h2("Graph RAG Context: $query")
+
+                if (results.isEmpty()) {
+                    text("No relevant context found in the knowledge graph.")
+                    return@markdown
                 }
+
+                results.forEachIndexed { idx, res ->
+                    val docSource = res["docSource"]?.toString() ?: "Unknown"
+                    val sectionHeader = res["sectionHeader"]?.toString() ?: ""
+                    val sectionContent = res["sectionContent"]?.toString() ?: ""
+                    val matchScore = res["matchScore"]?.toString() ?: ""
+                    val weightedScore = res["weightedScore"]?.toString() ?: ""
+                    val isFocusDoc = res["isFocusDoc"]?.toString() ?: "false"
+
+                    h3("Result ${idx + 1}: $sectionHeader")
+                    text("source=$docSource | focusDoc=$isFocusDoc | baseScore=$matchScore | weightedScore=$weightedScore")
+                    text(sectionContent)
+
+                    @Suppress("UNCHECKED_CAST")
+                    val related = res["related"] as? List<Map<String, Any>> ?: emptyList()
+                    if (related.isNotEmpty()) {
+                        bulleted {
+                            related.forEach { rel ->
+                                val topic = rel["topic"]?.toString() ?: "Unknown"
+                                val type = rel["type"]?.toString() ?: "Unknown"
+                                val weight = rel["weight"]?.toString() ?: ""
+                                item { text("$topic ($type, w=$weight)") }
+                            }
+                        }
+                    }
+                }
+
+                text("Prefer focusDoc=true results by default. Only use cross-doc bridges when the current chunk references prerequisites or when a contrast improves question quality.")
             }
         }
 
@@ -215,10 +271,7 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
             println("Waiting for previous generation to complete...")
         }
 
-
-        val markdownStream =
-            generationAgent.run("Generate unique questions based on the content")
-//            agentService.createAgentAndRun("Generate unique questions based on the content")
+        val markdownStream = generationAgent.run("Generate unique questions based on the content")
         return parseMDStreamToQuestions(markdownStream, toolset)
     }
 
@@ -290,23 +343,26 @@ class QuestionGenerator(val session: Session, private val documentChunks: Docume
         return questions
     }
 
-    @OptIn(InternalAgentsApi::class)
     private fun createAgent(toolset: ToolSet) {
         val systemPrompt = """
             You are an **Expert Question Generator** AI specializing in **critical thinking, inference, and foundational recall**. Your task is to process the available document content and generate a batch of high-quality, relevant, and diverse questions (MULTIPLE_CHOICE, SPOT_THE_ERROR, MATCH_THE_FOLLOWING).
+
             **TASK FLOW, LIMITS, AND MANDATE:**
             1. **Content Retrieval:** You **MUST** call the 'getNextTopic()' tool to retrieve the first available topic. Process this content and continue calling 'getNextTopic()' **only as needed to generate your target batch.**
             2. **Output Limit:** Generate a total of **10 to 15 questions** across the topics you retrieve, then **IMMEDIATELY STOP**. Do not exceed 15 questions.
-            3. **Contextual Tool Use:** You are **permitted** to use the 'search(query)' tool for supplementary details, definitions, or context.
-            4. **STRICT THEMATIC ANCHOR (Cross-Topic Synthesis):** The question's primary subject must be rooted in the current input chunk. However, for hard questions, you **CAN** use the 'search' tool to retrieve relevant details from *previous topics* to force the user to synthesize ideas or apply foundational knowledge that is mentioned or implied in the current content. DO NOT introduce a completely new topic not related to the current chunk.
-            
-            **GENERATION MANDATE (Varying Difficulty):**
-            * **Coverage:** Questions MUST cover the full range of difficulty: **easy** (key definitions, simple recall), **medium** (application, comparison), and **hard** (synthesis, complex inference).
-            * **Focus:** Ensure all **key definitions, important terms, and fundamental facts** are covered.
-            
+            3. **Graph RAG Contextual Tool Use (IMPORTANT):**
+               - You are permitted to use `graphContext(query)` when you need definitions, prerequisites, mechanisms, or exact phrasing.
+               - The tool returns results with `focusDoc=true/false`. Prefer `focusDoc=true` evidence to keep questions anchored to the current document.
+               - Use cross-document bridges only to clarify prerequisites or to create a synthesis/contrast question.
+            4. **STRICT THEMATIC ANCHOR:** The question's primary subject must be rooted in the current input chunk. Graph RAG is supporting evidence; it must not cause topic drift.
+
+            **GENERATION MANDATE (Pedagogical Engineering):**
+            * **Diagnostic Distractor Rule (MCQs):** You MUST NOT generate obviously wrong answers. Every "wrong" option must represent a specific Cognitive Trap.
+            * **Synthetic Conflict (Hard Questions):** Use the `graphContext` or `search` tool to find nuance from earlier content. Create questions that ask the user to reconcile two different parts of the document.
+            * **Error Classification (Spot the Error):** Errors should be logical inconsistencies, not spelling mistakes.
+
             **STRICT OUTPUT RULE:**
-            * After reaching your output limit, or if you call the quality gate, RESPOND **STRICTLY AND ONLY** in the required Markdown structured format, including the required 'difficulty' field.
-            * **Quality Saturation Gate:** If you determine that the **'getNextTopic()' tool is signaling no more topics are available** OR if **all remaining available topics are determined to be too low-quality, redundant, or simple recall-based for your high standard**, you **MUST** call the 'contentExhausted()' tool. This signals the **absolute end** of the question generation task.
+            * After reaching your output limit, RESPOND strictly in the required Markdown structured format.
         """.trimIndent()
 
 

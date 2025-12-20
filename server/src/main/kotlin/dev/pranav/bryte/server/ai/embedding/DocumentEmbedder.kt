@@ -6,9 +6,6 @@ import ai.koog.rag.base.files.DocumentProvider
 import ai.koog.rag.vector.DocumentEmbedder
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
-import dev.pranav.bryte.server.util.ext.documentChunks
-import dev.pranav.bryte.server.util.ext.supabase
-import io.github.jan.supabase.postgrest.postgrest
 import java.nio.file.Path
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -104,9 +101,10 @@ open class TextDocumentEmbedder(
 
         runCatching {
             Uuid.parse(id)
+            println("Text chunk id $id is a valid UUID, checking existing embeddings...")
         }.getOrElse {
             return@getOrElse try {
-                embedder.embed(text.removePrefix(id))
+                embedder.embed(text)
             } catch (e: Exception) {
             println("Failed to embed data: $text")
                 e.printStackTrace()
@@ -118,9 +116,13 @@ open class TextDocumentEmbedder(
             it.embedding?.let { return Vector(it) }
             it
         }
+        if (chunk == null) {
+            println("No document chunk found with id: $id")
+            return embedder.embed(text)
+        }
 
         val embedding = try {
-            embedder.embed(text.removePrefix(id))
+            embedder.embed(chunk.content)
         } catch (e: Exception) {
             println("Embedding failed for chunk id: $id, error: ${e.message}")
             Vector(listOf())

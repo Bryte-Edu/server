@@ -9,6 +9,10 @@ import kotlin.reflect.KProperty
 
 class DocumentsRepository(val postgrest: PostgrestQueryBuilder) {
 
+    suspend fun getAll(): List<DocumentItem> {
+        return postgrest.select().decodeList()
+    }
+
     suspend fun getById(documentId: String): DocumentItem {
         return postgrest.select {
             filter { eq("id", documentId) }
@@ -21,10 +25,10 @@ class DocumentsRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeSingle()
     }
 
-    suspend fun insert(doc: DocumentItem): DocumentItem? {
+    suspend fun insert(doc: DocumentItem): DocumentItem {
         return postgrest.insert(doc) {
             select()
-        }.decodeSingleOrNull()
+        }.decodeSingle()
     }
 }
 
