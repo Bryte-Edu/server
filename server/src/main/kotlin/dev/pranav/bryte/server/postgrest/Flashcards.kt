@@ -21,6 +21,12 @@ class FlashcardRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeList()
     }
 
+    suspend fun getById(id: String): Flashcard? {
+        return postgrest.select {
+            filter { eq("id", id) }
+        }.decodeSingleOrNull()
+    }
+
     suspend fun insert(flashcard: Flashcard): Flashcard? {
         return postgrest.insert(flashcard) {
             select()

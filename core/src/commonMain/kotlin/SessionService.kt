@@ -4,7 +4,6 @@ import dev.pranav.bryte.model.SessionDetails
 import dev.pranav.bryte.model.quiz.Question
 import kotlinx.coroutines.flow.Flow
 import kotlinx.rpc.annotations.Rpc
-import kotlinx.serialization.Serializable
 
 @Rpc
 interface SessionService {
@@ -24,4 +23,14 @@ interface SessionService {
 
 
     fun questions(): Flow<Question>
+
+    /**
+     * Retrieves the topic analytics such as FSRS readiness score for a specific topic
+     */
+    suspend fun getTopicAnalytics(topicId: String): dev.pranav.bryte.model.stats.TopicAnalytics?
+
+    /**
+     * Retrieves the full session analytics rolling up all learned topics
+     */
+    suspend fun getSessionAnalytics(): dev.pranav.bryte.model.stats.SessionAnalytics
 }

@@ -31,6 +31,7 @@ import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
 import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.QuestionRepository
+import dev.pranav.bryte.server.postgrest.TopicAnalyticsRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -77,7 +78,8 @@ import kotlinx.coroutines.runBlocking
 class QuestionGenerator(
     val session: Session,
     private val documentChunks: DocumentChunkRepository,
-    private val questions: QuestionRepository
+    private val questions: QuestionRepository,
+    private val topicAnalyticsRepo: TopicAnalyticsRepository? = null
 ) : AutoCloseable {
 
     var exhausted = false
@@ -114,7 +116,16 @@ class QuestionGenerator(
         require(session.id.isNotBlank()) { "Session ID must not be blank" }
 
         documentTopics = runBlocking {
-            documentChunks.getByDocumentId(session.documentId).toSet()
+            var topics = documentChunks.getByDocumentId(session.documentId).toList()
+            if (topicAnalyticsRepo != null) {
+                // Fetch stats for all topics and sort by readiness (lowest readiness first)
+                val stats = topics.map { it.id to topicAnalyticsRepo.getByTopicId(it.id!!) }
+                val scoreMap = stats.associate { it.first to (it.second?.readinessScore ?: Double.MAX_VALUE) }
+                topics = topics.sortedBy { scoreMap[it.id] ?: Double.MAX_VALUE }
+            } else {
+                topics = topics.sortedBy { it.index }
+            }
+            topics.toSet()
         }
 
         runBlocking {
