@@ -214,7 +214,7 @@ RETURN
                 )
 
                 // Create Chunks
-                chunks.filter { it.embedding != null }.forEach { chunk ->
+                chunks.forEach { chunk ->
                     println("   - Ingesting chunk: ${chunk.id} (Pages: ${chunk.pageNumber})")
                     tx.run(
                         $$"""
@@ -248,7 +248,13 @@ RETURN
         }
     }
 
-    fun interLinkWithDocumentBias(userId: String, threshold: Double = 0.65, bias: Double = 0.15) {
+    suspend fun interLinkWithDocumentBias(userId: String, threshold: Double = 0.65, bias: Double = 0.15) {
+        var isReady = false
+        while (!isReady) {
+            delay(2000)
+            isReady = checkIndexReady()
+        }
+
         driver.session().use { session ->
             session.executeWrite { tx ->
                 val cypher = $$"""

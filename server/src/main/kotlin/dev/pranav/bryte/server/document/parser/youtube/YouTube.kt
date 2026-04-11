@@ -4,14 +4,14 @@ import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
-import ai.koog.prompt.structure.StructureFixingParser
-import ai.koog.prompt.structure.executeStructured
+import ai.koog.prompt.executor.model.StructureFixingParser
+import ai.koog.prompt.executor.model.executeStructured
+import dev.pranav.bryte.model.DocumentType
+import dev.pranav.bryte.model.session.Image
 import dev.pranav.bryte.server.GEMINI_API_KEY
 import dev.pranav.bryte.server.document.DocParser
-import dev.pranav.bryte.server.document.DocumentType
 import dev.pranav.bryte.server.document.ParsedDocument
 import dev.pranav.bryte.server.document.Topic
-import dev.pranav.bryte.model.session.Image
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

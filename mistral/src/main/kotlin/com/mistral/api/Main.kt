@@ -14,7 +14,7 @@ data class DocumentAnnotation(
 )
 
 fun main() = runBlocking {
-    val apiKey = "Qp8elmVUNbt0XXT33vqYiMmIQhNvki7p"
+    val apiKey = "sk-xxx"
     MistralClient(apiKey = apiKey).use { client ->
         val models = client.models.listModels()
         println("Found ${models.data.size} models")

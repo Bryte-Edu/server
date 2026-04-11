@@ -1,34 +1,41 @@
 package dev.pranav.bryte.server.routes
 
+import dev.pranav.bryte.model.FlashcardRequest
+import dev.pranav.bryte.server.errors.BadRequestException
+import dev.pranav.bryte.server.errors.ForbiddenException
+import dev.pranav.bryte.server.util.ext.documents
 import dev.pranav.bryte.server.util.ext.flashcards
 import dev.pranav.bryte.server.util.ext.supabase
 import dev.pranav.bryte.server.util.ext.userId
-import dev.pranav.bryte.server.models.FlashcardRequest
-import io.ktor.http.HttpStatusCode
+import io.ktor.http.*
 import io.ktor.server.application.*
-import io.ktor.server.auth.authenticate
-import io.ktor.server.request.receive
+import io.ktor.server.auth.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
 fun Application.configureFlashcardRoutes() {
   routing {
     authenticate("auth-jwt") {
-      get("/api/flashcards") {
+      post("/api/flashcards") {
         val userId by call.userId()
         val flashcardRepository by supabase.flashcards()
-        println(userId)
+        val documents by supabase.documents()
 
         val document = call.receive<FlashcardRequest>()
-        println(document)
-
-        val flashcards = flashcardRepository.getByDocumentId(document.documentId)
-
-        if (flashcards.isNotEmpty()) {
-          call.respond(HttpStatusCode.OK, flashcards)
+        if (document.documentId.isBlank()) {
+          throw BadRequestException("documentId cannot be blank")
         }
 
+        val documentItem = runCatching { documents.getById(document.documentId) }.getOrNull()
+          ?: throw BadRequestException("Document not found")
 
+        if (documentItem.userId != userId) {
+          throw ForbiddenException("Access denied")
+        }
+
+        val flashcards = flashcardRepository.getByDocumentId(document.documentId)
+        call.respond(HttpStatusCode.OK, flashcards)
       }
     }
   }

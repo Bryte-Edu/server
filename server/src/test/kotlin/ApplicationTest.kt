@@ -1,61 +1,56 @@
 package dev.pranav.bryte.server
 
-import dev.pranav.bryte.SessionService
-import dev.pranav.bryte.server.plugins.configureSerialization
-import dev.pranav.bryte.server.plugins.configureSockets
-import dev.pranav.bryte.server.routes.configureRpcRoutes
-import io.ktor.client.plugins.websocket.*
-import io.ktor.client.request.*
+import dev.pranav.bryte.model.DocumentType
+import dev.pranav.bryte.server.document.parser.file.FileParser
+import dev.pranav.bryte.server.document.parser.youtube.YouTube
+import dev.pranav.bryte.server.errors.BadRequestException
+import dev.pranav.bryte.server.errors.ExternalServiceException
+import dev.pranav.bryte.server.errors.ForbiddenException
+import dev.pranav.bryte.server.errors.UnauthorizedException
+import dev.pranav.bryte.server.plugins.jwkToECPublicKey
+import dev.pranav.bryte.server.util.ext.getDocumentParser
 import io.ktor.http.*
-import io.ktor.server.testing.*
-import kotlinx.rpc.krpc.ktor.client.Krpc
-import kotlinx.rpc.krpc.ktor.client.rpc
-import kotlinx.rpc.krpc.ktor.client.rpcConfig
-import kotlinx.rpc.krpc.serialization.json.json
-import kotlinx.rpc.withService
-import org.junit.jupiter.api.assertDoesNotThrow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class ApplicationTest {
 
     @Test
-    fun testRoot() = testApplication {
-        application {
-            module()
-        }
-        client.get("/").apply {
-            assertEquals(HttpStatusCode.OK, status)
-        }
+    fun testApiExceptionsMapToExpectedStatusCodes() {
+        assertEquals(HttpStatusCode.BadRequest, BadRequestException("bad").statusCode)
+        assertEquals(HttpStatusCode.Unauthorized, UnauthorizedException().statusCode)
+        assertEquals(HttpStatusCode.Forbidden, ForbiddenException().statusCode)
+        assertEquals(HttpStatusCode.BadGateway, ExternalServiceException("upstream").statusCode)
     }
 
     @Test
-    fun testRpc() = testApplication {
-        application {
-            configureSockets()
-            configureSerialization()
-            configureRpcRoutes()
-        }
+    fun testGetDocumentParserReturnsExpectedImplementations() {
+        assertIs<FileParser>(getDocumentParser(DocumentType.PDF))
+        assertIs<FileParser>(getDocumentParser(DocumentType.DOCX))
+        assertIs<FileParser>(getDocumentParser(DocumentType.PPTX))
+        assertIs<YouTube>(getDocumentParser(DocumentType.YOUTUBE))
+    }
 
-        val ktorClient = createClient {
-            install(WebSockets)
-            install(Krpc)
-        }
+    @Test
+    fun testGetDocumentParserRejectsUnsupportedTypes() {
+        assertFailsWith<BadRequestException> { getDocumentParser(DocumentType.EPUB) }
+        assertFailsWith<BadRequestException> { getDocumentParser(DocumentType.WEBPAGE) }
+    }
 
-        val rpcClient = ktorClient.rpc("/api") {
-            rpcConfig {
-                serialization {
-                    json()
-                }
-            }
-        }
+    @Test
+    fun testJwkToECPublicKeyBuildsEcPublicKey() {
+        val publicKey = jwkToECPublicKey(
+            mapOf(
+                "kty" to "EC",
+                "crv" to "P-256",
+                "x" to JWK_X,
+                "y" to JWK_Y
+            )
+        )
 
-        val service = rpcClient.withService<SessionService>()
-
-
-        assertDoesNotThrow {
-            service.details()
-        }
+        assertEquals("EC", publicKey.algorithm)
     }
 
 }

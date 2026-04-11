@@ -1,6 +1,5 @@
-package dev.pranav.bryte.server.models
+package dev.pranav.bryte.model
 
-import dev.pranav.bryte.model.DocumentType
 import kotlinx.serialization.Serializable
 
 @Serializable

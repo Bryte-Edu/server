@@ -2,8 +2,6 @@ package dev.pranav.bryte.server.ai
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.core.agent.isRunning
-import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
 import ai.koog.agents.core.feature.handler.agent.AgentStartingContext
@@ -11,7 +9,6 @@ import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
-import ai.koog.agents.core.tools.reflect.tools
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.embeddings.local.LLMEmbedder
 import ai.koog.prompt.dsl.Prompt
@@ -23,8 +20,7 @@ import ai.koog.prompt.markdown.markdown
 import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.prompt.streaming.filterTextOnly
 import ai.koog.prompt.structure.markdown.MarkdownStructureDefinition
-import ai.koog.rag.vector.EmbeddingBasedDocumentStorage
-import ai.koog.rag.vector.InMemoryVectorStorage
+import ai.koog.rag.vector.storage.InMemoryDocumentEmbeddingStorage
 import dev.pranav.bryte.model.quiz.Content
 import dev.pranav.bryte.model.quiz.Question
 import dev.pranav.bryte.model.session.DocumentChunk
@@ -36,7 +32,6 @@ import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.QuestionRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
@@ -109,9 +104,7 @@ class QuestionGenerator(
     }
 
     private val documentStorage by lazy {
-        EmbeddingBasedDocumentStorage(
-            embedder, InMemoryVectorStorage()
-        )
+        InMemoryDocumentEmbeddingStorage(embedder)
     }
 
     private val documentTopics: Set<DocumentChunk>
@@ -124,11 +117,8 @@ class QuestionGenerator(
             documentChunks.getByDocumentId(session.documentId).toSet()
         }
 
-        documentTopics.forEach {
-            runBlocking {
-                if (it.content.length < 200) return@runBlocking
-                documentStorage.store(it.id!!)
-            }
+        runBlocking {
+            documentStorage.add(documentTopics.filter { it.content.length > 200 }.mapNotNull { it.id })
         }
     }
 
@@ -265,11 +255,11 @@ class QuestionGenerator(
         if (!::generationAgent.isInitialized) {
             createAgent(toolset)
         }
-
-        while (generationAgent.isRunning()) {
-            delay(500)
-            println("Waiting for previous generation to complete...")
-        }
+//
+//        while (generationAgent.agentConfig.) {
+//            delay(500)
+//            println("Waiting for previous generation to complete...")
+//        }
 
         val markdownStream = generationAgent.run("Generate unique questions based on the content")
         return parseMDStreamToQuestions(markdownStream, toolset)

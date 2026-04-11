@@ -1,5 +1,6 @@
 package dev.pranav.bryte.server.document
 
+import dev.pranav.bryte.model.DocumentType
 import dev.pranav.bryte.model.session.Image
 
 /**
@@ -22,15 +23,3 @@ data class Topic(
     val images: List<Image>,
     val pages: List<Int>
 )
-
-/**
- * Enum class representing different types of documents.
- */
-enum class DocumentType {
-    PDF,
-    PPTX,
-    DOCX,
-    YOUTUBE,
-    EPUB,
-    WEBPAGE
-}

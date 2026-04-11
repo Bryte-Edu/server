@@ -1,8 +1,9 @@
 package dev.pranav.bryte.server.util.ext
 
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.auth.jwt.JWTPrincipal
-import io.ktor.server.auth.principal
+import dev.pranav.bryte.server.errors.UnauthorizedException
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.auth.jwt.*
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
@@ -14,10 +15,10 @@ class UserIdDelegate(private val call: ApplicationCall) : ReadOnlyProperty<Any?,
   override fun getValue(thisRef: Any?, property: KProperty<*>): String {
 
     val principal = call.principal<JWTPrincipal>()
-      ?: throw IllegalStateException("JWT Principal not found in authenticated call.")
+        ?: throw UnauthorizedException("JWT principal missing")
 
     val userId = principal.subject
-      ?: throw IllegalStateException("JWT 'subject' claim (userId) is missing.")
+        ?: throw UnauthorizedException("JWT subject missing")
 
     return userId
   }

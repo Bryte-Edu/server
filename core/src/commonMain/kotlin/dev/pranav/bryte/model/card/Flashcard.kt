@@ -17,6 +17,7 @@ data class Flashcard(
     val topic: String,
     @SerialName("importance_level")
     val importance: ImportanceLevel? = ImportanceLevel.MEDIUM,
+    val rationale: String,
     @SerialName("created_at")
     val createdAt: String? = null
 )

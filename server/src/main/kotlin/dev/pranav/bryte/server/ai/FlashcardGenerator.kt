@@ -2,9 +2,10 @@ package dev.pranav.bryte.server.ai
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
-import ai.koog.agents.core.agent.isRunning
+import ai.koog.agents.core.agent.context.AIAgentContext
+import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.annotation.InternalAgentsApi
-import ai.koog.agents.core.dsl.builder.forwardTo
+import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
 import ai.koog.agents.core.feature.handler.agent.AgentStartingContext
@@ -12,25 +13,31 @@ import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
-import ai.koog.agents.core.tools.reflect.tools
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.embeddings.local.LLMEmbedder
 import ai.koog.prompt.dsl.Prompt
-import ai.koog.prompt.executor.clients.google.GoogleModels
+import ai.koog.prompt.executor.clients.LLMClientException
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
-import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
+import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
+import ai.koog.prompt.executor.clients.openai.OpenAIModels
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.markdown.markdown
 import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.prompt.streaming.filterTextOnly
 import ai.koog.prompt.structure.markdown.MarkdownStructureDefinition
-import ai.koog.rag.vector.EmbeddingBasedDocumentStorage
-import ai.koog.rag.vector.InMemoryVectorStorage
+import ai.koog.rag.vector.storage.InMemoryDocumentEmbeddingStorage
+import com.cohere.api.Cohere
+import com.cohere.api.core.Environment
+import com.cohere.api.requests.RerankRequest
+import com.cohere.api.types.RerankRequestDocumentsItem
 import dev.pranav.bryte.model.card.Flashcard
 import dev.pranav.bryte.model.common.ImportanceLevel
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.model.session.Session
-import dev.pranav.bryte.server.GEMINI_API_KEY
+import dev.pranav.bryte.server.AZURE_API_KEY
+import dev.pranav.bryte.server.AZURE_API_URL
 import dev.pranav.bryte.server.MISTRAL_API_KEY
 import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
 import dev.pranav.bryte.server.migration.Neo4jManager
@@ -41,10 +48,11 @@ import dev.pranav.bryte.server.util.ext.flashcards
 import dev.pranav.bryte.server.util.ext.sessions
 import dev.pranav.bryte.server.util.ext.supabase
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.runBlocking
 
 
 fun main() = runBlocking {
@@ -52,7 +60,7 @@ fun main() = runBlocking {
     val documentChunks by supabase.documentChunks()
     val flashcards by supabase.flashcards()
     val generator =
-        FlashcardGenerator(sessions.getById("98040688-6252-446b-b495-96c28ddc80cd")!!, documentChunks, flashcards)
+        FlashcardGenerator(sessions.getById("df5815b3-0ece-44c9-8bba-7753b704745f")!!, documentChunks, flashcards)
 
     generator.use {
         println("Starting flashcard generation cycle...")
@@ -101,9 +109,7 @@ class FlashcardGenerator(
     }
 
     private val documentStorage by lazy {
-        EmbeddingBasedDocumentStorage(
-            embedder, InMemoryVectorStorage()
-        )
+        InMemoryDocumentEmbeddingStorage(embedder)
     }
 
     private val documentTopics: Set<DocumentChunk>
@@ -113,34 +119,38 @@ class FlashcardGenerator(
         require(session.id.isNotBlank()) { "Session ID must not be blank" }
 
         documentTopics = runBlocking {
-            documentChunks.getByDocumentId(session.documentId).toSet()
+            documentChunks.getByDocumentId(session.documentId).toSet().sortedBy { it.index }.toSet()
         }
 
-        documentTopics.forEach {
-            runBlocking {
-                if (it.content.length < 200) return@runBlocking
-                documentStorage.store(it.id!!)
-            }
+        runBlocking {
+            documentStorage.add(documentTopics.filter { it.content.length > 200 }.map { it.id!! }.toList())
         }
     }
 
     @Suppress("unused")
     @LLMDescription("Tools for retrieving document topics and searching content.")
     inner class DocumentToolset : ToolSet {
-        var index = 0
+        var index = 16
+        var toolCallsInBatch = 0
 
         fun currentTopic(): DocumentChunk {
-            return documentTopics.elementAtOrElse(index, { documentTopics.last() })
+            return documentTopics.find { it.index == index } ?: documentTopics.last()
         }
 
         @Tool
         @LLMDescription("Returns the next topic content from document.")
         fun getNextTopic(): String {
+            toolCallsInBatch++
             if (index >= documentTopics.size) {
                 exhausted = true
                 return "No more topics available."
             }
-            val topic = documentTopics.elementAt(index)
+
+            if (toolCallsInBatch >= 4) {
+                return "ERROR: Batch quota reached (4 topics). You MUST now generate flashcards for the topics already retrieved before calling this tool again."
+            }
+            val topic = documentTopics.find { it.index == index }
+                ?: return "Topic at index $index not found."
             index++
             return markdown {
                 h1(topic.header)
@@ -153,79 +163,94 @@ class FlashcardGenerator(
         suspend fun search(
             @LLMDescription("The query to search for related information.") query: String
         ): String {
-            return graphContext(query = query, topK = graphRagConfig.topK, neighborLimit = graphRagConfig.neighborLimit)
-        }
+            val cohere = Cohere.builder()
+                .token(AZURE_API_KEY)
+                .environment(
+                    Environment.custom(AZURE_API_URL)
+                ).build()
 
-        @Tool
-        @LLMDescription("Return a graph-augmented context pack for a query: top matches plus their strongest related concepts. Uses weighted doc-priority retrieval.")
-        suspend fun graphContext(
-            @LLMDescription("The query to retrieve context for.") query: String,
-            @LLMDescription("Number of starting chunks to retrieve from the vector index.") topK: Int = 6,
-            @LLMDescription("Max number of related concepts to include per chunk.") neighborLimit: Int = 5
-        ): String {
-            if (query.isBlank()) return "Query is blank."
-
-            val queryEmbedding = embedder.embed(query).values
-            if (queryEmbedding.isEmpty()) return "No embedding produced for query."
-
-            val results = neo4j.searchKnowledgeGraphWeighted(
-                queryEmbedding = queryEmbedding,
-                userId = session.userId,
-                focusDocumentId = session.documentId,
-                topK = topK,
-                neighborLimit = neighborLimit,
-                docBias = graphRagConfig.docBias,
-                crossDocPenalty = graphRagConfig.crossDocPenalty
+            val rerankResponse = cohere.rerank(
+                RerankRequest.builder()
+                    .query(query)
+                    .documents(documentTopics.map { it.content }.toList().map { RerankRequestDocumentsItem.of(it) })
+                    .topN(5)
+                    .build()
             )
-
-            return markdown {
-                h1("Graph RAG Context: $query")
-
-                if (results.isEmpty()) {
-                    text("No relevant context found in the knowledge graph.")
-                    return@markdown
-                }
-
-                results.forEachIndexed { idx, res ->
-                    val docSource = res["docSource"]?.toString() ?: "Unknown"
-                    val sectionHeader = res["sectionHeader"]?.toString() ?: ""
-                    val sectionContent = res["sectionContent"]?.toString() ?: ""
-                    val matchScore = res["matchScore"]?.toString() ?: ""
-                    val weightedScore = res["weightedScore"]?.toString() ?: ""
-                    val isFocusDoc = res["isFocusDoc"]?.toString() ?: "false"
-
-                    h2("Result ${idx + 1}: $sectionHeader")
-                    text("source=$docSource | focusDoc=$isFocusDoc | baseScore=$matchScore | weightedScore=$weightedScore")
-                    text(sectionContent)
-
-                    @Suppress("UNCHECKED_CAST")
-                    val related = res["related"] as? List<Map<String, Any>> ?: emptyList()
-                    if (related.isNotEmpty()) {
-                        h3("Related Concepts")
-                        bulleted {
-                            related.forEach { rel ->
-                                val topic = rel["topic"]?.toString() ?: "Unknown"
-                                val type = rel["type"]?.toString() ?: "Unknown"
-                                val weight = rel["weight"]?.toString() ?: ""
-                                item { text("$topic ($type, w=$weight)") }
-                            }
-                        }
-                    }
-                }
-
-                h2("Usage guidance")
-                text("Prefer facts from focusDoc=true results if they answer the question. Use cross-doc bridges only when they clarify prerequisites or definitions.")
-            }
+            println("Rerank response: $rerankResponse")
+            return rerankResponse.results.map { it.document.get().text }.joinToString("\n")
+            //return graphContext(query = query, topK = graphRagConfig.topK, neighborLimit = graphRagConfig.neighborLimit)
         }
 
-        @Tool
-        @LLMDescription("Get the list of all available topic titles.")
-        fun getAllTopics(): String {
-            if (documentTopics.isEmpty()) {
-                return "No topics found in document"
-            }
-            return documentTopics.map { it.header }.distinct().joinToString()
-        }
+//        @Tool
+//        @LLMDescription("Return a graph-augmented context pack for a query: top matches plus their strongest related concepts. Uses weighted doc-priority retrieval.")
+//        suspend fun graphContext(
+//            @LLMDescription("The query to retrieve context for.") query: String,
+//            @LLMDescription("Number of starting chunks to retrieve from the vector index.") topK: Int = 6,
+//            @LLMDescription("Max number of related concepts to include per chunk.") neighborLimit: Int = 5
+//        ): String {
+//            if (query.isBlank()) return "Query is blank."
+//
+//            val queryEmbedding = embedder.embed(query).values
+//            if (queryEmbedding.isEmpty()) return "No embedding produced for query."
+//
+//            val results = neo4j.searchKnowledgeGraphWeighted(
+//                queryEmbedding = queryEmbedding,
+//                userId = session.userId,
+//                focusDocumentId = session.documentId,
+//                topK = topK,
+//                neighborLimit = neighborLimit,
+//                docBias = graphRagConfig.docBias,
+//                crossDocPenalty = graphRagConfig.crossDocPenalty
+//            )
+//
+//            return markdown {
+//                h1("Graph RAG Context: $query")
+//
+//                if (results.isEmpty()) {
+//                    text("No relevant context found in the knowledge graph.")
+//                    return@markdown
+//                }
+//
+//                results.forEachIndexed { idx, res ->
+//                    val docSource = res["docSource"]?.toString() ?: "Unknown"
+//                    val sectionHeader = res["sectionHeader"]?.toString() ?: ""
+//                    val sectionContent = res["sectionContent"]?.toString() ?: ""
+//                    val matchScore = res["matchScore"]?.toString() ?: ""
+//                    val weightedScore = res["weightedScore"]?.toString() ?: ""
+//                    val isFocusDoc = res["isFocusDoc"]?.toString() ?: "false"
+//
+//                    h2("Result ${idx + 1}: $sectionHeader")
+//                    text("source=$docSource | focusDoc=$isFocusDoc | baseScore=$matchScore | weightedScore=$weightedScore")
+//                    text(sectionContent)
+//
+//                    @Suppress("UNCHECKED_CAST")
+//                    val related = res["related"] as? List<Map<String, Any>> ?: emptyList()
+//                    if (related.isNotEmpty()) {
+//                        h3("Related Concepts")
+//                        bulleted {
+//                            related.forEach { rel ->
+//                                val topic = rel["topic"]?.toString() ?: "Unknown"
+//                                val type = rel["type"]?.toString() ?: "Unknown"
+//                                val weight = rel["weight"]?.toString() ?: ""
+//                                item { text("$topic ($type, w=$weight)") }
+//                            }
+//                        }
+//                    }
+//                }
+//
+//                h2("Usage guidance")
+//                text("Prefer facts from focusDoc=true results if they answer the question. Use cross-doc bridges only when they clarify prerequisites or definitions.")
+//            }
+//        }
+//
+//        @Tool
+//        @LLMDescription("Get the list of titles of all topics in the document.")
+//        fun getAllTopics(): String {
+//            if (documentTopics.isEmpty()) {
+//                return "No topics found in document"
+//            }
+//            return documentTopics.map { it.header }.distinct().joinToString()
+//        }
 //
 //        @Tool
 //        @LLMDescription("Get content for a specific topic. Prefer getNextTopic for sequential access.")
@@ -243,95 +268,84 @@ class FlashcardGenerator(
 
     private lateinit var generationAgent: AIAgent<String, Flow<StreamFrame>>
 
-    fun generateFlashcards(): Flow<Flashcard> {
+    suspend fun generateFlashcards(): Flow<Flashcard> {
         val toolset = DocumentToolset()
 
-        if (!::generationAgent.isInitialized) {
-            createAgent(toolset)
-        }
-
-        return flow {
-            while (!exhausted) {
-                while (generationAgent.isRunning()) {
-                    delay(500)
-                    println("Waiting for previous generation to complete...")
-                }
-
-                val flow = generationAgent.run("Generate flashcards based on the available content.")
-
-                parseMDStreamToQuestions(flow, toolset).collect {
-                    println("Generated flashcard: $it")
-                    emit(it)
+        flashcards.getByDocumentId(session.documentId).let { flashcards ->
+            if (flashcards.isNotEmpty()) {
+                toolset.index = flashcards.maxOf { fc ->
+                    documentTopics.first { it.id == fc.chunkId }.index
                 }
             }
         }
+
+        val frameStream = MutableSharedFlow<StreamFrame>(replay = 10, extraBufferCapacity = 1000)
+
+        if (!::generationAgent.isInitialized) {
+            createAgent(toolset, frameStream)
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                generationAgent.run("Generate flashcards for the document.")
+            } finally {
+                // Signal exhaustion to the parser if the agent finishes for any reason
+                exhausted = true
+            }
+        }
+
+        return parseMDStreamToQuestions(frameStream, toolset)
     }
 
     @OptIn(InternalAgentsApi::class)
-    private fun createAgent(toolset: ToolSet) {
+    private fun createAgent(toolset: DocumentToolset, receiver: MutableSharedFlow<StreamFrame>) {
         val systemPrompt = """
-You are an **Expert Flashcard Creator** specializing in active recall and spaced repetition learning. Your primary function is to transform document content into high-quality, pedagogically effective flashcards.
+Role: Expert Flashcard Creator (Active Recall/Spaced Repetition). Objective: Convert document content into high-quality flashcards to promote understanding and learning using provided tools.
 
-## **CORE WORKFLOW:**
-1. **Content Acquisition:** Begin by calling `getNextTopic()` to retrieve the first available topic. Process this content thoroughly.
-2. **Batch Generation:** Generate about **25-30 flashcards** per run. If you need more content to reach this target, call `getNextTopic()` again as needed.
-3. **Graph RAG Context Enhancement (IMPORTANT):**
-   - Prefer `graphContext(query)` when you need definitions, mechanisms, prerequisites, or precise phrasing.
-   - The tool returns results with `focusDoc=true/false`. Prefer `focusDoc=true` evidence to keep cards anchored to the current document.
-   - Use cross-document bridges (`focusDoc=false` and `Cross-Doc Bridge` related concepts) only to clarify or contrast a concept.
-4. **Sequential Processing:** Process topics in order. Do not skip ahead or return to previously covered topics within the same batch. You may call `getNextTopic()` multiple times to access new content.
+Operational Workflow
+Source Content: Always call getNextTopic() to retrieve new content. Do not use overview tools or meta-info for card creation.
 
-## **FLASHCARD QUALITY STANDARDS:**
-- **Difficulty Distribution:**
-  - **Easy (30-40%):** Core definitions.
-  - **Medium (40-50%):** **Concept Discrimination.** Instead of "What is X?", use "How does X differ from Y?" to ensure the user isn't just memorizing keywords.
-  - **Hard (20-30%):** **The "Feynman" Challenge.** Formulate questions that require the user to explain a mechanism or predict an outcome based on the text.
-- **Thematic Integrity:** Each flashcard must be related to the current topic. Graph RAG is supporting evidence; it must not cause topic drift.
-- **Pedagogical Value:** For every card, produce a `hidden_rationale`: the mental model required to answer correctly.
+No Topic Drift: Keep cards anchored to the received content, if needed, request more content. You are allowed to skip topics that are not suitable for flashcard creation.
 
-## **CONTINUATION PROTOCOL:**
-- Each run should produce 25-30 flashcards from the current position in the content.
-- Never repeat flashcards.
-- If you cannot generate more unique flashcards from the current material, call `getNextTopic()`.
+Volume & Continuity: Generate high quality, effective flashcards. If current content is exhausted, call getNextTopic() again until the quota is met. Never repeat cards.
+Strict Boundaries: Focus only on actual knowledge. No questions about document structure, titles, authors, or meta-talk (e.g., "As mentioned in..."). No trivial nomenclature/units. All difficulty levels must be equally and consistently represented.
+DO NOT respond with anything other than the markdown structure defined below.
+
+Flashcard Standards
+Easy (30-40%): Definition/Fact/Term/Important Formulas. (e.g., "What is...?" or "Define X").
+
+Medium (40-50%): Concept/Explanation. (e.g., "Explain how..." or "Why does X happen?").
+
+Hard (20-30%): Mechanism/Prediction/Application. (e.g., "What happens if...?" or "How does X lead to Y?").
+
+**Substance**: Avoid one-word answers or trivial questions. Answers must be comprehensive to aid retention. Focus on core concepts, mechanisms, and applications, not peripheral details. Do not create cards on unimportant content like examples, anecdotes, or other unimportant nonsense.
+
+Mandatory Field: Every card must include a hidden_rationale explaining the underlying mental model.
 """.trimIndent()
 
-
-        // OpenRouterModels.Qwen3VL.copy(id="google/gemma-3-27b-it:free", contextLength = 131_072)
         val agentConfig = AIAgentConfig(
             prompt = Prompt.build(
                 id = "Flashcard Generation Prompt",
-//                params = GoogleParams(thinkingConfig = GoogleThinkingConfig(includeThoughts = true, thinkingLevel = GoogleThinkingLevel.LOW))
             ) {
                 system(systemPrompt)
             },
-            model = GoogleModels.Gemini2_5Flash, //.copy(id="gemini-3-flash-preview"),
-            maxAgentIterations = 50,
+            model = OpenAIModels.Chat.GPT5_2.copy(id = "gpt-5.2-chat"),
+            maxAgentIterations = 150,
             enforceSingleRun = false
         )
 
 
-        val agentStrategy = strategy<String, Flow<StreamFrame>>("flashcard-generator") {
-            val sendInput by nodeLLMRequest("sendInput")
-            val runTools by nodeExecuteTool()
-            val sendToolResults by nodeLLMSendToolResult()
-
-            val returnStream by nodeLLMRequestStreaming("flashcards", structure)
-
-            edge(nodeStart forwardTo sendInput)
-            edge(sendInput forwardTo runTools onToolCall { true })
-            edge(sendInput forwardTo returnStream onAssistantMessage { true })
-            edge(runTools forwardTo sendToolResults)
-            edge(sendToolResults forwardTo runTools onToolCall { true })
-            edge(runTools forwardTo sendToolResults)
-            edge(sendToolResults forwardTo returnStream onAssistantMessage { true })
-            edge(returnStream forwardTo nodeFinish)
-        }
-
         generationAgent = AIAgent<String, Flow<StreamFrame>>(
-//            promptExecutor = simpleOpenRouterExecutor(OPENROUTER_API_KEY),
-            promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
+            promptExecutor = MultiLLMPromptExecutor(
+                OpenAILLMClient(
+                    apiKey = AZURE_API_KEY,
+                    settings = OpenAIClientSettings(
+                        baseUrl = AZURE_API_URL,
+                    )
+                )
+            ),
             agentConfig = agentConfig,
-            strategy = agentStrategy,
+            strategy = flashcardStrategy("flashcard-strategy", toolset, receiver),
             toolRegistry = ToolRegistry {
                 tools(toolset)
             },
@@ -346,9 +360,19 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                     }
 
                     onLLMStreamingFrameReceived {
-                        if (it.streamFrame is StreamFrame.Append) {
-                            print((it.streamFrame as StreamFrame.Append).text)
+                        if (it.streamFrame is StreamFrame.TextDelta) {
+                            print((it.streamFrame as StreamFrame.TextDelta).text)
+                        } else {
+                            println(it.streamFrame.toString())
                         }
+                    }
+
+                    onLLMCallStarting {
+                        println("LLM call starting...")
+                    }
+
+                    onLLMCallCompleted {
+                        println("LLM call completed.")
                     }
 
                     onLLMStreamingFailed {
@@ -357,13 +381,113 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
 
                     onToolCallCompleted {
                         println("Tool call completed: ${it.toolName} with result: ${it.toolResult}")
-                        if (it.toolName == "contentExhausted") {
-                            exhausted = true
-                            println("Exhaustion tool called. Ending question generation.")
-                        }
                     }
                 }
             })
+    }
+
+    private suspend fun AIAgentContext.historyIsTooLong(): Boolean = llm.readSession {
+        prompt.messages.sumOf { it.content.length } > 100_000
+    }
+
+    fun flashcardStrategy(
+        name: String,
+        toolset: DocumentToolset,
+        receiver: MutableSharedFlow<StreamFrame>
+    ): AIAgentGraphStrategy<String, Flow<StreamFrame>> {
+
+        return strategy(name) {
+            val nodeSendInput by nodeLLMRequest("sendInput")
+            val nodeExecuteTool by nodeExecuteTool()
+            val nodeSendToolResult by nodeLLMSendToolResult()
+
+            val compressHistory by nodeLLMCompressHistory<Flow<StreamFrame>>(
+                "compressHistory",
+                strategy = HistoryCompressionStrategy.FromLastNMessages(10),
+                preserveMemory = true
+            )
+
+            val returnStream by node<String, Flow<StreamFrame>>("requestFlashcards") { message ->
+                llm.writeSession {
+                    appendPrompt {
+                        user(message)
+                    }
+
+                    val stream = try {
+                        requestLLMStreaming(structure)
+                    } catch (e: LLMClientException) {
+                        if (e.cause!!.message!!.contains("Please retry after")) {
+                            println("Rate limit hit, sleeping for 20 seconds before retrying...")
+                            Thread.sleep(20_000)
+                            requestLLMStreaming(structure)
+                        } else {
+                            throw e
+                        }
+                    }
+
+                    coroutineScope {
+                        stream.collect { frame ->
+                            receiver.emit(frame)
+                        }
+                    }
+                    stream
+                }
+            }
+
+            edge(nodeStart forwardTo nodeSendInput)
+
+            edge(
+                (nodeSendInput forwardTo nodeExecuteTool)
+                        onToolCall { true }
+            )
+
+            edge(
+                (nodeSendInput forwardTo returnStream)
+                        onAssistantMessage { true }
+            )
+
+            edge(nodeExecuteTool forwardTo nodeSendToolResult)
+
+            edge(
+                (nodeSendToolResult forwardTo returnStream)
+                        onAssistantMessage { true }
+            )
+
+            edge(
+                (nodeSendToolResult forwardTo nodeExecuteTool)
+                        onToolCall { true }
+            )
+
+            edge(
+                (returnStream forwardTo compressHistory)
+                        onCondition { !exhausted && historyIsTooLong() }
+            )
+
+            edge(
+                (compressHistory forwardTo nodeSendInput)
+                        transformed { "Continue flashcard generation with the next topic." }
+            )
+
+            edge(
+                (returnStream forwardTo nodeSendInput)
+                        onCondition { !exhausted }
+                        transformed {
+                    toolset.toolCallsInBatch = 0
+                    "Continue flashcard generation with the next topic."
+                }
+            )
+
+            edge(
+                (returnStream forwardTo nodeFinish)
+                        onCondition { exhausted }
+            )
+
+            edge(
+                (nodeSendToolResult forwardTo nodeFinish)
+                        onCondition { exhausted }
+                        transformed { emptyFlow() }
+            )
+        }
     }
 
     fun parseMDStreamToQuestions(markdownStream: Flow<StreamFrame>, toolset: DocumentToolset): Flow<Flashcard> {
@@ -373,11 +497,12 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                 var back = ""
                 var topic = ""
                 var importanceLevel = "medium"
+                var rationale = ""
 
                 onHeader(1) {
                     val chunk = toolset.currentTopic()
 
-                    if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty()) {
+                    if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty() && rationale.isNotEmpty()) {
                         val flashcard = Flashcard(
                             documentId = session.documentId,
                             chunkId = chunk.id!!,
@@ -390,7 +515,8 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                                 "medium" -> ImportanceLevel.MEDIUM
                                 "hard" -> ImportanceLevel.HIGH
                                 else -> ImportanceLevel.MEDIUM
-                            }
+                            },
+                            rationale = rationale
                         )
 
                         emit(flashcard)
@@ -416,10 +542,15 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                     importanceLevel = it.lowercase()
                 }
 
+                onHeader(5) {
+                    if (it.isEmpty()) return@onHeader
+                    rationale = it
+                }
+
                 onFinishStream {
                     val chunk = toolset.currentTopic()
 
-                    if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty()) {
+                    if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty() && rationale.isNotEmpty()) {
                         val flashcard = Flashcard(
                             documentId = session.documentId,
                             chunkId = chunk.id!!,
@@ -432,7 +563,8 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                                 "medium" -> ImportanceLevel.MEDIUM
                                 "hard" -> ImportanceLevel.HIGH
                                 else -> ImportanceLevel.MEDIUM
-                            }
+                            },
+                            rationale = rationale
                         )
 
                         emit(flashcard)
@@ -453,6 +585,7 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                         h2("back")
                         h3("topic")
                         h4("importance")
+                        h5("rationale")
                     }
                 }
             }
@@ -464,18 +597,21 @@ You are an **Expert Flashcard Creator** specializing in active recall and spaced
                         h2("Electric flux is a measure of the electric field passing through a given area.")
                         h3("Electromagnetism")
                         h4("easy")
+                        h5("Understanding electric flux helps in visualizing how electric fields interact with surfaces.")
                     }
                     item {
                         h1("What is Zeeman effect?")
                         h2("The Zeeman effect is the splitting of a spectral line into several components in the presence of a strong external magnetic field.")
                         h3("Quantum Mechanics")
                         h4("medium")
+                        h5("To answer this question, one must understand the interaction between magnetic fields and atomic energy levels, which causes the splitting of spectral lines.")
                     }
                     item {
                         h1("What is Klystron?")
                         h2("A Klystron is a specialized linear-beam vacuum tube used to amplify high-frequency radio waves, and is widely used in radar systems, communications and particle accelerators.")
                         h3("Microwave Engineering")
                         h4("hard")
+                        h5("Answering this question requires knowledge of microwave amplification techniques and the specific design and function of Klystron tubes.")
                     }
                 }
             }

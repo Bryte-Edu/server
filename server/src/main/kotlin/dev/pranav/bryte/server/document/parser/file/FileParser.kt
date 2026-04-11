@@ -1,14 +1,12 @@
 package dev.pranav.bryte.server.document.parser.file
 
-import com.mistral.api.MistralClient
 import com.mistral.api.models.ocr.OcrResponse
-import dev.pranav.bryte.server.document.DocumentType
-import dev.pranav.bryte.server.document.ParsedDocument
-import dev.pranav.bryte.server.document.DocParser
-import dev.pranav.bryte.server.document.Topic
+import dev.pranav.bryte.model.DocumentType
 import dev.pranav.bryte.model.session.Image
+import dev.pranav.bryte.server.document.DocParser
+import dev.pranav.bryte.server.document.ParsedDocument
+import dev.pranav.bryte.server.document.Topic
 import kotlinx.serialization.Serializable
-import kotlin.collections.flatMap
 
 //fun main() {
 //    val fileUrl = "https://dspace.mit.edu/bitstream/handle/1721.1/144261/12525_2022_Article_570.pdf"

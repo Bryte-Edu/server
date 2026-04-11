@@ -3,7 +3,7 @@ package dev.pranav.bryte.server.ai.embedding
 import ai.koog.embeddings.base.Embedder
 import ai.koog.embeddings.base.Vector
 import ai.koog.rag.base.files.DocumentProvider
-import ai.koog.rag.vector.DocumentEmbedder
+import ai.koog.rag.vector.embedder.DocumentEmbedder
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import java.nio.file.Path
@@ -97,11 +97,8 @@ open class TextDocumentEmbedder(
 
         val id = text
 
-        println("Embedding text chunk with id: $id")
-
         runCatching {
             Uuid.parse(id)
-            println("Text chunk id $id is a valid UUID, checking existing embeddings...")
         }.getOrElse {
             return@getOrElse try {
                 embedder.embed(text)

@@ -13,5 +13,3 @@ include(":server")
 include(":core")
 include(":client")
 include(":mistral")
-
-includeBuild("lib/koog")

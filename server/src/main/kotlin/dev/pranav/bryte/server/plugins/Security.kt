@@ -2,6 +2,9 @@ package dev.pranav.bryte.server.plugins
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import dev.pranav.bryte.model.ErrorResponse
+import dev.pranav.bryte.server.JWK_X
+import dev.pranav.bryte.server.JWK_Y
 import dev.pranav.bryte.server.SUPABASE_URL
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -23,8 +26,8 @@ fun Application.configureSecurity() {
         mapOf(
             "kty" to "EC",
             "crv" to "P-256",
-            "x" to "_cmSfJGlzeSXjCop4_f-WjDHDEqYYUd_rJ_eS5EzKrg",
-            "y" to "uClbH_QK-eHQalge7t_L2SbSm_giOQ-6tIR0q-WRiHs"
+            "x" to JWK_X,
+            "y" to JWK_Y
         )
     val publicKey = jwkToECPublicKey(jwk)
 
@@ -38,13 +41,11 @@ fun Application.configureSecurity() {
             )
             validate { credential ->
                 if (credential.payload.audience.contains("authenticated")) {
-                    println("JWT validated for subject: ${credential.payload.subject}")
                     JWTPrincipal(credential.payload)
                 } else null
             }
             challenge { _, _ ->
-                call.respond(HttpStatusCode.Unauthorized)
-                println("JWT authentication failed.")
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Unauthorized"))
             }
         }
     }

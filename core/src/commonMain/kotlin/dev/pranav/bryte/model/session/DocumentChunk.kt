@@ -15,7 +15,8 @@ data class DocumentChunk(
     val content: String,
     val images: List<Image>,
     @Serializable(with = VectorSerializer::class)
-    var embedding: List<Double>? = null
+    var embedding: List<Double>? = null,
+    var index: Int
 )
 
 @Serializable

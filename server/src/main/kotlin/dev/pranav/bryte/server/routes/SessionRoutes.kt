@@ -1,11 +1,13 @@
 package dev.pranav.bryte.server.routes
 
+import dev.pranav.bryte.model.CreateSessionRequest
+import dev.pranav.bryte.model.SessionCreateResponse
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.model.session.DocumentItem
 import dev.pranav.bryte.model.session.Session
+import dev.pranav.bryte.server.errors.BadRequestException
+import dev.pranav.bryte.server.errors.ExternalServiceException
 import dev.pranav.bryte.server.migration.Neo4jManager
-import dev.pranav.bryte.server.models.CreateSessionRequest
-import dev.pranav.bryte.server.models.SessionCreateResponse
 import dev.pranav.bryte.server.util.ext.*
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -18,18 +20,25 @@ import io.ktor.server.routing.*
 fun Application.configureSessionRoutes() {
     routing {
         authenticate("auth-jwt") {
-            get("/api/create-session") {
+            post("/api/create-session") {
                 val userId by call.userId()
                 val sessions by supabase.sessions()
                 val documents by supabase.documents()
                 val documentChunks by supabase.documentChunks()
 
                 val request = call.receive<CreateSessionRequest>()
+                if (request.source.isBlank()) {
+                    throw BadRequestException("source cannot be blank")
+                }
 
                 val parser = getDocumentParser(request.docType)
 
                 val parsed = parser.parseDocument(request.source)
-                    ?: return@get call.respond(HttpStatusCode.BadRequest, "Failed to parse document")
+                    ?: throw BadRequestException("Failed to parse document")
+
+                if (parsed.topics.isEmpty()) {
+                    throw BadRequestException("No content found in document")
+                }
 
                 val documentItem = documents.insert(
                     DocumentItem(
@@ -38,23 +47,51 @@ fun Application.configureSessionRoutes() {
                         type = request.docType.name,
                         source = request.source,
                         metadata = mapOf(
-                            "num_pages" to parsed.topics.maxOf { it.pages.max() }.toString()
+                            "num_pages" to (parsed.topics.asSequence()
+                                .flatMap { it.pages.asSequence() }
+                                .maxOrNull()
+                                ?.toString() ?: "0")
                         )
                     )
                 )
 
-                val chunks = documentChunks.insert(parsed.topics.map {
+                val llmClient =
+                    ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient(dev.pranav.bryte.server.MISTRAL_API_KEY)
+                val embedder = ai.koog.embeddings.local.LLMEmbedder(
+                    llmClient,
+                    ai.koog.prompt.executor.clients.mistralai.MistralAIModels.Embeddings.MistralEmbed
+                )
+
+                val chunksList = parsed.topics.mapIndexed { index, topic ->
+                    val embedding = try {
+                        embedder.embed(topic.content).values
+                    } catch (_: Exception) {
+                        throw ExternalServiceException("Failed to generate embeddings")
+                    }
                     DocumentChunk(
                         documentId = documentItem.id,
-                        header = it.header,
-                        content = it.content,
-                        images = it.images,
-                        pageNumber = it.pages
+                        header = topic.header,
+                        content = topic.content,
+                        images = topic.images,
+                        pageNumber = topic.pages,
+                        embedding = embedding,
+                        index = index
                     )
-                })
+                }
 
-                val graph = Neo4jManager()
-                graph.ingestDocument(documentItem, chunks)
+                if (chunksList.isEmpty()) {
+                    throw ExternalServiceException("Failed to create document chunks")
+                }
+
+                val chunks = documentChunks.insert(chunksList)
+
+                try {
+                    val graph = Neo4jManager()
+                    graph.ingestDocument(documentItem, chunks)
+                    graph.interLinkWithDocumentBias(documentItem.userId)
+                } catch (_: Exception) {
+                    throw ExternalServiceException("Failed to index document graph")
+                }
 
                 val session = sessions.insert(
                     Session(
@@ -63,8 +100,9 @@ fun Application.configureSessionRoutes() {
                         difficulty = "medium",
                     )
                 )
+                    ?: throw ExternalServiceException("Failed to create session")
 
-                call.respond(HttpStatusCode.OK, SessionCreateResponse(session!!.id))
+                call.respond(HttpStatusCode.Created, SessionCreateResponse(session.id))
             }
         }
     }
