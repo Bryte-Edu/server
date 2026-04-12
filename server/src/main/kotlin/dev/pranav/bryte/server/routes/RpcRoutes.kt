@@ -29,12 +29,16 @@ fun Application.configureRpcRoutes() {
                 val sessions by supabase.sessions()
                 val sessionId = call.parameters["sessionId"]?.trim().orEmpty()
                 if (sessionId.isEmpty()) {
+                    log.info("Session id can't be empty")
                     throw BadRequestException("sessionId is required")
                 }
 
                 val session = sessions.getById(sessionId)
 
+                log.info("Session: $session")
+
                 if (session == null || session.userId != userId) {
+                    log.info("sessionId is invalid")
                     throw ForbiddenException("Session not found or access denied")
                 }
 

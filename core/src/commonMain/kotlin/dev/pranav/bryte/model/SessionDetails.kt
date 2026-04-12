@@ -8,5 +8,4 @@ data class SessionDetails(
     val userId: String,
     val documentId: String,
     val createdAt: String,
-    val updatedAt: String
 )

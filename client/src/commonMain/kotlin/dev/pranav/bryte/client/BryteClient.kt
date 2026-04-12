@@ -11,8 +11,10 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.rpc.krpc.ktor.client.installKrpc
 import kotlinx.rpc.krpc.ktor.client.rpc
 import kotlinx.rpc.krpc.serialization.json.json
@@ -22,6 +24,8 @@ class BryteClient(
     private val baseUrl: String,
     private val authToken: String? = null
 ) {
+    private val wsUrl = baseUrl.replace("http", "ws")
+
     private val client = HttpClient {
         installKrpc {
             serialization {
@@ -33,7 +37,11 @@ class BryteClient(
             authToken?.let { bearerAuth(it) }
         }
 
-        install(ContentNegotiation)
+        install(WebSockets)
+
+        install(ContentNegotiation) {
+            json()
+        }
     }
 
     suspend fun createSession(docType: DocumentType, source: String): SessionCreateResponse {
@@ -53,6 +61,7 @@ class BryteClient(
     suspend fun getSessionRpc(sessionId: String): SessionService {
         val rpcClient = client.rpc {
             url {
+                takeFrom(wsUrl)
                 encodedPath = "/api/rpc/$sessionId"
             }
         }
@@ -62,6 +71,7 @@ class BryteClient(
     suspend fun getFlashcardRpc(sessionId: String): FlashcardService {
         val rpcClient = client.rpc {
             url {
+                takeFrom(wsUrl)
                 encodedPath = "/api/rpc/flashcards/$sessionId"
             }
         }

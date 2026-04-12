@@ -130,7 +130,7 @@ class FlashcardGenerator(
     @Suppress("unused")
     @LLMDescription("Tools for retrieving document topics and searching content.")
     inner class DocumentToolset : ToolSet {
-        var index = 16
+        var index = 0
         var toolCallsInBatch = 0
 
         fun currentTopic(): DocumentChunk {
@@ -520,7 +520,17 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         )
 
                         emit(flashcard)
-                        flashcards.insert(flashcard)
+                        try {
+                            flashcards.insert(flashcard)
+                        } catch (e: Exception) {
+                            println("Failed to insert flashcard to DB: ${e.message}")
+                        }
+
+                        front = ""
+                        back = ""
+                        topic = ""
+                        importanceLevel = "medium"
+                        rationale = ""
                     }
 
                     if (it.isEmpty()) return@onHeader
@@ -568,7 +578,11 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         )
 
                         emit(flashcard)
-                        flashcards.insert(flashcard)
+                        try {
+                            flashcards.insert(flashcard)
+                        } catch (e: Exception) {
+                            println("Failed to insert flashcard closing stream to DB: ${e.message}")
+                        }
                     }
                 }
 

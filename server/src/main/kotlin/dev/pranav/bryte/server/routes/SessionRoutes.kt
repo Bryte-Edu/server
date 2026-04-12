@@ -65,8 +65,10 @@ fun Application.configureSessionRoutes() {
                 val chunksList = parsed.topics.mapIndexed { index, topic ->
                     val embedding = try {
                         embedder.embed(topic.content).values
-                    } catch (_: Exception) {
-                        throw ExternalServiceException("Failed to generate embeddings")
+                    } catch (e: Exception) {
+                        println("EMBEDDING EXCEPTION: ${e.message}")
+                        e.printStackTrace()
+                        throw ExternalServiceException("Failed to generate embeddings: ${e.message}")
                     }
                     DocumentChunk(
                         documentId = documentItem.id,
@@ -89,8 +91,10 @@ fun Application.configureSessionRoutes() {
                     val graph = Neo4jManager()
                     graph.ingestDocument(documentItem, chunks)
                     graph.interLinkWithDocumentBias(documentItem.userId)
-                } catch (_: Exception) {
-                    throw ExternalServiceException("Failed to index document graph")
+                } catch (e: Exception) {
+                    println("GRAPH INGESTION EXCEPTION: ${e.message}")
+                    e.printStackTrace()
+                    throw ExternalServiceException("Failed to index document graph: ${e.message}")
                 }
 
                 val session = sessions.insert(

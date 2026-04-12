@@ -22,6 +22,7 @@ class SessionServiceImpl(val session: Session) : SessionService {
     val chunks by supabase.documentChunks()
     val questions by supabase.questions()
     val topicAnalyticsRepo by supabase.topicAnalytics()
+
     generator = QuestionGenerator(
       session,
       chunks,
@@ -31,13 +32,13 @@ class SessionServiceImpl(val session: Session) : SessionService {
   }
 
   override suspend fun details(): SessionDetails {
+    System.err.println("Session service for session ${session.id}")
 
     return SessionDetails(
       sessionId = session.id,
       userId = session.userId,
       documentId = session.documentId,
       createdAt = session.createdAt,
-      updatedAt = session.updatedAt
     )
   }
 

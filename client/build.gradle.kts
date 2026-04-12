@@ -20,8 +20,9 @@ kotlin {
             api(project(":core"))
             api("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-client:$kotlinx_rpc_version")
             api("io.ktor:ktor-client-core:$ktor_version")
-            api("io.ktor:ktor-client-cio-jvm:$ktor_version")
+            api("io.ktor:ktor-client-cio:$ktor_version")
             implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
 
         }
     }
