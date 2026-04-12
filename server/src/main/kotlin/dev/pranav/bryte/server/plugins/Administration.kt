@@ -1,7 +1,7 @@
 package dev.pranav.bryte.server.plugins
 
-import io.github.flaxoos.ktor.server.plugins.ratelimiter.*
-import io.github.flaxoos.ktor.server.plugins.ratelimiter.implementations.*
+import io.github.flaxoos.ktor.server.plugins.ratelimiter.RateLimiting
+import io.github.flaxoos.ktor.server.plugins.ratelimiter.implementations.TokenBucket
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.routing.*

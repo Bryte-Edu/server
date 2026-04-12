@@ -18,7 +18,7 @@ import kotlinx.serialization.Serializable
 /**
  * Parser for YouTube video transcripts to generate structured study notes.
  */
-class YouTube: DocParser<String> {
+class YouTube : DocParser<String> {
 
     override suspend fun parseDocument(input: String): ParsedDocument? {
         val executor = simpleGoogleAIExecutor(GEMINI_API_KEY)

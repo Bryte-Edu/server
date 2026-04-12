@@ -101,7 +101,9 @@ class QuestionGenerator(
 
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
-            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed), documentTopics, documentChunks
+            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed),
+            documentTopics,
+            documentChunks
         )
     }
 

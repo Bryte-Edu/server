@@ -103,10 +103,10 @@ open class TextDocumentEmbedder(
             return@getOrElse try {
                 embedder.embed(text)
             } catch (e: Exception) {
-            println("Failed to embed data: $text")
+                println("Failed to embed data: $text")
                 e.printStackTrace()
-            Vector(listOf())
-        }
+                Vector(listOf())
+            }
         }
 
         val chunk = documentTopics.find { it.id == id }?.let {

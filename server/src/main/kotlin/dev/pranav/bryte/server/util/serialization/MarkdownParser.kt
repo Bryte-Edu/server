@@ -1,7 +1,6 @@
 package dev.pranav.bryte.server.util.serialization
 
 import kotlinx.coroutines.flow.Flow
-import java.lang.System.lineSeparator
 
 /**
  * A builder for creating markdown parsers with event-based handlers.
@@ -100,7 +99,8 @@ public class MarkdownParserBuilder {
                             // Separator line: Ignore but consume
                             consumedByTable = true
                         } else if (isTableContent) {
-                            val cells = parseTableCells(line.trimStart().substringAfter('|').trimStart().let { "|${it}" }) // Defensive cleaning
+                            val cells = parseTableCells(
+                                line.trimStart().substringAfter('|').trimStart().let { "|${it}" }) // Defensive cleaning
                             tableHandler?.invoke(tableHeaders!!, cells)
                             consumedByTable = true
                         } else {

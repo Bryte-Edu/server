@@ -46,114 +46,114 @@ class FileParser : DocParser<String> {
 }
 
 fun parseOcrResponse(response: OcrResponse): OcrDocument {
-        val pages = response.pages.map { page ->
-            OcrPage(
-                page.index + 1, page.markdown, page.images.map { image ->
-                    OcrImage(
-                        image.id, image.imageBase64
-                    )
-                })
-        }
-        val document = OcrDocument(
-            title = extractTitle(pages)
-        )
-        document.pages = pages
-        document.pagesProcessed = response.usageInfo.pagesProcessed
-        document.topics = parseTopics(pages)
+    val pages = response.pages.map { page ->
+        OcrPage(
+            page.index + 1, page.markdown, page.images.map { image ->
+                OcrImage(
+                    image.id, image.imageBase64
+                )
+            })
+    }
+    val document = OcrDocument(
+        title = extractTitle(pages)
+    )
+    document.pages = pages
+    document.pagesProcessed = response.usageInfo.pagesProcessed
+    document.topics = parseTopics(pages)
 
-        return document
+    return document
+}
+
+/**
+ * Extracts the title of the document from the first heading found in the pages.
+ * If no heading is found, returns "Untitled Document".
+ *
+ * @param pages The list of pages to search for a heading.
+ * @return The extracted title or "Untitled Document" if no heading is found.
+ */
+private fun extractTitle(pages: List<OcrPage>): String {
+    val headingRegex = Regex("^#{1,6}\\s+(.+?)\\s*$")
+    for (page in pages) {
+        val lines = page.text.lines()
+        for (line in lines) {
+            val match = headingRegex.find(line)
+            if (match != null) {
+                return match.groupValues[1].trim()
+            }
+        }
+    }
+    return "Untitled Document"
+}
+
+/**
+ * Parses the pages to extract topics based on markdown headings.
+ * Each topic includes its title, associated page numbers, markdown content, and images.
+ *
+ * @param pages The list of pages to parse for topics.
+ * @return A list of extracted topics.
+ */
+private fun parseTopics(pages: List<OcrPage>): List<OcrTopic> {
+    if (pages.isEmpty()) return emptyList()
+
+    val headingRegex = Regex("^#{1,6}\\s+(.+?)\\s*$")
+    val imageRegex = Regex("!\\[[^]]*]\\(([^)]+)\\)")
+    val imageById: Map<String, OcrImage> = pages.flatMap { it.images }.associateBy { it.id }
+
+    val topics = mutableListOf<OcrTopic>()
+    var currentTitle: String? = null
+    val content = StringBuilder()
+    val imageIds = linkedSetOf<String>()
+    val pageSet = linkedSetOf<Int>()
+    var skippingReferences = false
+
+    fun finalizeCurrentTopic() {
+        val title = currentTitle ?: return
+        val md = content.toString().trim()
+        if (md.isNotBlank()) {
+            val imgs = imageIds.mapNotNull { imageById[it] }
+            topics += OcrTopic(title.trim(), pageSet.toList(), md, imgs)
+        }
+        currentTitle = null
+        content.setLength(0)
+        imageIds.clear()
+        pageSet.clear()
     }
 
-    /**
-     * Extracts the title of the document from the first heading found in the pages.
-     * If no heading is found, returns "Untitled Document".
-     *
-     * @param pages The list of pages to search for a heading.
-     * @return The extracted title or "Untitled Document" if no heading is found.
-     */
-    private fun extractTitle(pages: List<OcrPage>): String {
-        val headingRegex = Regex("^#{1,6}\\s+(.+?)\\s*$")
-        for (page in pages) {
-            val lines = page.text.lines()
-            for (line in lines) {
-                val match = headingRegex.find(line)
-                if (match != null) {
-                    return match.groupValues[1].trim()
+    for (page in pages) {
+        for (line in page.text.lines()) {
+            val headingMatch = headingRegex.find(line)
+            if (headingMatch != null) {
+                val title = headingMatch.groupValues[1].trim()
+                if (title.equals("references", ignoreCase = true)) {
+                    finalizeCurrentTopic()
+                    skippingReferences = true
+                    continue
+                } else {
+                    finalizeCurrentTopic()
+                    currentTitle = title
+                    skippingReferences = false
+                    continue
+                }
+            }
+
+            if (skippingReferences) continue
+
+            if (currentTitle != null) {
+                if (line.isNotBlank()) pageSet += page.pageNumber
+                content.appendLine(line)
+                imageRegex.findAll(line).forEach { match ->
+                    val raw = match.groupValues[1].trim()
+                    val id = raw.substringAfterLast('/')
+                    imageIds += id
+                    pageSet += page.pageNumber
                 }
             }
         }
-        return "Untitled Document"
     }
 
-    /**
-     * Parses the pages to extract topics based on markdown headings.
-     * Each topic includes its title, associated page numbers, markdown content, and images.
-     *
-     * @param pages The list of pages to parse for topics.
-     * @return A list of extracted topics.
-     */
-    private fun parseTopics(pages: List<OcrPage>): List<OcrTopic> {
-        if (pages.isEmpty()) return emptyList()
-
-        val headingRegex = Regex("^#{1,6}\\s+(.+?)\\s*$")
-        val imageRegex = Regex("!\\[[^]]*]\\(([^)]+)\\)")
-        val imageById: Map<String, OcrImage> = pages.flatMap { it.images }.associateBy { it.id }
-
-        val topics = mutableListOf<OcrTopic>()
-        var currentTitle: String? = null
-        val content = StringBuilder()
-        val imageIds = linkedSetOf<String>()
-        val pageSet = linkedSetOf<Int>()
-        var skippingReferences = false
-
-        fun finalizeCurrentTopic() {
-            val title = currentTitle ?: return
-            val md = content.toString().trim()
-            if (md.isNotBlank()) {
-                val imgs = imageIds.mapNotNull { imageById[it] }
-                topics += OcrTopic(title.trim(), pageSet.toList(), md, imgs)
-            }
-            currentTitle = null
-            content.setLength(0)
-            imageIds.clear()
-            pageSet.clear()
-        }
-
-        for (page in pages) {
-            for (line in page.text.lines()) {
-                val headingMatch = headingRegex.find(line)
-                if (headingMatch != null) {
-                    val title = headingMatch.groupValues[1].trim()
-                    if (title.equals("references", ignoreCase = true)) {
-                        finalizeCurrentTopic()
-                        skippingReferences = true
-                        continue
-                    } else {
-                        finalizeCurrentTopic()
-                        currentTitle = title
-                        skippingReferences = false
-                        continue
-                    }
-                }
-
-                if (skippingReferences) continue
-
-                if (currentTitle != null) {
-                    if (line.isNotBlank()) pageSet += page.pageNumber
-                    content.appendLine(line)
-                    imageRegex.findAll(line).forEach { match ->
-                        val raw = match.groupValues[1].trim()
-                        val id = raw.substringAfterLast('/')
-                        imageIds += id
-                        pageSet += page.pageNumber
-                    }
-                }
-            }
-        }
-
-        finalizeCurrentTopic()
-        return topics
-    }
+    finalizeCurrentTopic()
+    return topics
+}
 
 /**
  * Data class representing a Document with its pages and topics.
@@ -164,7 +164,10 @@ fun parseOcrResponse(response: OcrResponse): OcrDocument {
  */
 @Serializable
 data class OcrDocument(
-    var title: String, var pages: List<OcrPage> = listOf(), var pagesProcessed: Int = 0, var topics: List<OcrTopic> = listOf()
+    var title: String,
+    var pages: List<OcrPage> = listOf(),
+    var pagesProcessed: Int = 0,
+    var topics: List<OcrTopic> = listOf()
 )
 
 /**

@@ -3,16 +3,13 @@ package dev.pranav.bryte.server.plugins
 import ai.koog.ktor.Koog
 import ai.koog.ktor.aiAgent
 import ai.koog.prompt.executor.clients.google.GoogleModels
-import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import dev.pranav.bryte.server.GEMINI_API_KEY
 import dev.pranav.bryte.server.MISTRAL_API_KEY
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-
 import kotlinx.rpc.krpc.ktor.server.Krpc
-import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 

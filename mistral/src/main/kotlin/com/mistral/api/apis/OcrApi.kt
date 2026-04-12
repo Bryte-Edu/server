@@ -6,7 +6,6 @@ import com.mistral.api.models.ocr.OcrRequest
 import com.mistral.api.models.ocr.OcrResponse
 import io.ktor.client.call.*
 import io.ktor.client.request.*
-import io.ktor.client.statement.*
 import io.ktor.http.*
 
 class OcrApi(private val client: MistralClient) {

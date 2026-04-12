@@ -104,7 +104,9 @@ class FlashcardGenerator(
 
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
-            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed), documentTopics, documentChunks
+            LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed),
+            documentTopics,
+            documentChunks
         )
     }
 
@@ -623,7 +625,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
             markdown {
                 bulleted {
                     item {
-                        h1( "What is electric flux?")
+                        h1("What is electric flux?")
                         h2("Electric flux is a measure of the electric field passing through a given area.")
                         h3("Electromagnetism")
                         h4("easy")

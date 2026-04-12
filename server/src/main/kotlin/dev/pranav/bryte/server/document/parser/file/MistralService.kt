@@ -1,16 +1,13 @@
 package dev.pranav.bryte.server.document.parser.file
 
 import com.mistral.api.MistralClient
-import com.mistral.api.models.embeddings.EmbeddingsRequest
 import com.mistral.api.models.files.FileItem
 import com.mistral.api.models.ocr.DocumentURLChunk
 import com.mistral.api.models.ocr.FileChunk
 import com.mistral.api.models.ocr.OcrRequest
 import com.mistral.api.models.ocr.OcrResponse
 import dev.pranav.bryte.server.MISTRAL_API_KEY
-import dev.pranav.bryte.server.document.Topic
 import java.io.File
-import kotlin.collections.map
 
 /**
  * Centralized helper for Mistral AI operations used by the app.

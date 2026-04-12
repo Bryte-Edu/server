@@ -15,28 +15,28 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
 fun Application.configureFlashcardRoutes() {
-  routing {
-    authenticate("auth-jwt") {
-      post("/api/flashcards") {
-        val userId by call.userId()
-        val flashcardRepository by supabase.flashcards()
-        val documents by supabase.documents()
+    routing {
+        authenticate("auth-jwt") {
+            post("/api/flashcards") {
+                val userId by call.userId()
+                val flashcardRepository by supabase.flashcards()
+                val documents by supabase.documents()
 
-        val document = call.receive<FlashcardRequest>()
-        if (document.documentId.isBlank()) {
-          throw BadRequestException("documentId cannot be blank")
+                val document = call.receive<FlashcardRequest>()
+                if (document.documentId.isBlank()) {
+                    throw BadRequestException("documentId cannot be blank")
+                }
+
+                val documentItem = runCatching { documents.getById(document.documentId) }.getOrNull()
+                    ?: throw BadRequestException("Document not found")
+
+                if (documentItem.userId != userId) {
+                    throw ForbiddenException("Access denied")
+                }
+
+                val flashcards = flashcardRepository.getByDocumentId(document.documentId)
+                call.respond(HttpStatusCode.OK, flashcards)
+            }
         }
-
-        val documentItem = runCatching { documents.getById(document.documentId) }.getOrNull()
-          ?: throw BadRequestException("Document not found")
-
-        if (documentItem.userId != userId) {
-          throw ForbiddenException("Access denied")
-        }
-
-        val flashcards = flashcardRepository.getByDocumentId(document.documentId)
-        call.respond(HttpStatusCode.OK, flashcards)
-      }
     }
-  }
 }

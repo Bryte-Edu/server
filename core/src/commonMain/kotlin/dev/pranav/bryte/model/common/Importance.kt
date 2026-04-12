@@ -5,7 +5,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class ImportanceLevel {
-    @SerialName("low") LOW,
-    @SerialName("medium") MEDIUM,
-    @SerialName("high") HIGH
+    @SerialName("low")
+    LOW,
+
+    @SerialName("medium")
+    MEDIUM,
+
+    @SerialName("high")
+    HIGH
 }

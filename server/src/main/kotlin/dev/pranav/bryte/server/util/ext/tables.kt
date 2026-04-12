@@ -1,10 +1,6 @@
 package dev.pranav.bryte.server.util.ext
 
-import dev.pranav.bryte.server.postgrest.DocumentChunksDelegate
-import dev.pranav.bryte.server.postgrest.DocumentsDelegate
-import dev.pranav.bryte.server.postgrest.FlashcardsDelegate
-import dev.pranav.bryte.server.postgrest.QuestionsDelegate
-import dev.pranav.bryte.server.postgrest.SessionsDelegate
+import dev.pranav.bryte.server.postgrest.*
 import io.github.jan.supabase.SupabaseClient
 
 /**
