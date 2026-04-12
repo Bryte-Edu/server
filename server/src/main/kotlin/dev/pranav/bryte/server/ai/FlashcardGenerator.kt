@@ -280,7 +280,7 @@ class FlashcardGenerator(
 
         if (toolset.index >= documentTopics.size) {
             exhausted = true
-            return flow {
+            return kotlinx.coroutines.flow.flow {
                 existingCards.forEach { emit(it) }
             }
         }
