@@ -10,7 +10,7 @@ class SseParser {
         val sb = StringBuilder()
         var saw = false
         while (!channel.isClosedForRead) {
-            val line = channel.readUTF8Line() ?: break
+            val line = channel.readLine() ?: break
             if (line.isBlank()) {
                 if (saw) break else continue
             }

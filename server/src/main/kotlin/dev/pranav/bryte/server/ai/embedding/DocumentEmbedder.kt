@@ -125,10 +125,7 @@ open class TextDocumentEmbedder(
             Vector(listOf())
         }
 
-        chunk?.embedding = embedding.values
-
-        if (chunk != null)
-        documentChunks.upsert(chunk)
+        chunk.embedding = embedding.values
 
         return embedding
     }

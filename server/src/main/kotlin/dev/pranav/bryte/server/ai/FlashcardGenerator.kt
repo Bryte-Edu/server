@@ -49,11 +49,11 @@ import dev.pranav.bryte.server.util.ext.sessions
 import dev.pranav.bryte.server.util.ext.supabase
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
-
 
 fun main() = runBlocking {
     val sessions by supabase.sessions()
@@ -271,18 +271,24 @@ class FlashcardGenerator(
     suspend fun generateFlashcards(): Flow<Flashcard> {
         val toolset = DocumentToolset()
 
-        flashcards.getByDocumentId(session.documentId).let { flashcards ->
-            if (flashcards.isNotEmpty()) {
-                toolset.index = flashcards.maxOf { fc ->
-                    documentTopics.first { it.id == fc.chunkId }.index
-                }
+        val existingCards = flashcards.getByDocumentId(session.documentId)
+        if (existingCards.isNotEmpty()) {
+            toolset.index = existingCards.maxOf { fc ->
+                documentTopics.first { it.id == fc.chunkId }.index
+            } + 1
+        }
+
+        if (toolset.index >= documentTopics.size) {
+            exhausted = true
+            return flow {
+                existingCards.forEach { emit(it) }
             }
         }
 
-        val frameStream = MutableSharedFlow<StreamFrame>(replay = 10, extraBufferCapacity = 1000)
+        val frameChannel = Channel<StreamFrame>(Channel.UNLIMITED)
 
         if (!::generationAgent.isInitialized) {
-            createAgent(toolset, frameStream)
+            createAgent(toolset, frameChannel)
         }
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -291,14 +297,15 @@ class FlashcardGenerator(
             } finally {
                 // Signal exhaustion to the parser if the agent finishes for any reason
                 exhausted = true
+                frameChannel.close()
             }
         }
 
-        return parseMDStreamToQuestions(frameStream, toolset)
+        return parseMDStreamToQuestions(frameChannel.consumeAsFlow(), toolset)
     }
 
     @OptIn(InternalAgentsApi::class)
-    private fun createAgent(toolset: DocumentToolset, receiver: MutableSharedFlow<StreamFrame>) {
+    private fun createAgent(toolset: DocumentToolset, receiver: Channel<StreamFrame>) {
         val systemPrompt = """
 Role: Expert Flashcard Creator (Active Recall/Spaced Repetition). Objective: Convert document content into high-quality flashcards to promote understanding and learning using provided tools.
 
@@ -393,7 +400,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
     fun flashcardStrategy(
         name: String,
         toolset: DocumentToolset,
-        receiver: MutableSharedFlow<StreamFrame>
+        receiver: Channel<StreamFrame>
     ): AIAgentGraphStrategy<String, Flow<StreamFrame>> {
 
         return strategy(name) {
@@ -426,9 +433,18 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                     }
 
                     coroutineScope {
-                        stream.collect { frame ->
-                            receiver.emit(frame)
-                        }
+                        launch {
+                            try {
+                                stream.collect { frame ->
+                                    receiver.send(frame)
+                                    if (frame is StreamFrame.End) {
+                                        this@launch.cancel()
+                                    }
+                                }
+                            } catch (e: CancellationException) {
+                                // Expected completion via cancellation
+                            }
+                        }.join()
                     }
                     stream
                 }

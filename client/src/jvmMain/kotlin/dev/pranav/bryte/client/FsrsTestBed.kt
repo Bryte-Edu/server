@@ -1,6 +1,8 @@
 package dev.pranav.bryte.client
 
+import dev.pranav.bryte.model.stats.FSRSReview
 import io.ktor.client.statement.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -18,7 +20,7 @@ fun main() = runBlocking {
     println("=====================================================\n")
 
     var authToken =
-        "eyJhbGciOiJFUzI1NiIsImtpZCI6IjZjODJkMjU2LTYwMmQtNDM1MC1hNmMyLTczMTlhYzAwMDNiMyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2Zjc2RpY3dkaWJ4ZGp1Z3dobWRlLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIwZTY5M2ZkYi1iOGQ4LTQxNjgtODNiOS05YzhmNGQ2YzIyOGUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc1OTgxMjI4LCJpYXQiOjE3NzU5Nzc2MjgsImVtYWlsIjoidGVzdEBicnl0ZS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImFib3V0X21lIjoiXG4iLCJlbWFpbCI6InRlc3RAYnJ5dGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBob25lX3ZlcmlmaWVkIjpmYWxzZSwic3ViIjoiMGU2OTNmZGItYjhkOC00MTY4LTgzYjktOWM4ZjRkNmMyMjhlIiwidXNlcm5hbWUiOiIifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3NTk3NzYyOH1dLCJzZXNzaW9uX2lkIjoiZTBkNzRlODQtMzRmNy00ZTQzLWIzMTMtMjljYTk5YjFiNGEyIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.lYHWUZQtrAcqScJl1D0-HNw2Q28STgKiZ2ZK7XjeMh_8qFM2jrvelNRuDbI0-9ow03_TfNiAprgkWGSHZfoIZg"
+        "eyJhbGciOiJFUzI1NiIsImtpZCI6IjZjODJkMjU2LTYwMmQtNDM1MC1hNmMyLTczMTlhYzAwMDNiMyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2Zjc2RpY3dkaWJ4ZGp1Z3dobWRlLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIwZTY5M2ZkYi1iOGQ4LTQxNjgtODNiOS05YzhmNGQ2YzIyOGUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc1OTg0ODQ3LCJpYXQiOjE3NzU5ODEyNDcsImVtYWlsIjoidGVzdEBicnl0ZS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImFib3V0X21lIjoiXG4iLCJlbWFpbCI6InRlc3RAYnJ5dGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBob25lX3ZlcmlmaWVkIjpmYWxzZSwic3ViIjoiMGU2OTNmZGItYjhkOC00MTY4LTgzYjktOWM4ZjRkNmMyMjhlIiwidXNlcm5hbWUiOiIifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3NTk4MTI0N31dLCJzZXNzaW9uX2lkIjoiNzc4NjJlMWYtNmZmYS00NGFmLWJiZjAtZTk1ZjI3ZjVkM2FhIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.e8lZ8rtjzZJ8euYo3snZnvZjMGh2U68oq6jT_lMxlT4GmRa7Ym6MbJG_zTYqhvgkivu-OQIToAgh3qiBt8reYQ"
 
     // Connect to local server
     val client = BryteClient("http://127.0.0.1:8080", authToken)
@@ -52,35 +54,35 @@ fun main() = runBlocking {
 
         println(">> [STEP 4] Streaming AI Generated Flashcards... (Waiting for 1 card)")
         // Using K-RPC Flow to eagerly load a few cards matching the topic
-        val firstCard = flashcardRpc.flashcards().collect { println(it) }
+        val firstCard = flashcardRpc.flashcards().first()
 
         if (firstCard != null) {
-//            println("   [SUCCESS] Received Card [${firstCard.id}] from AI Stream: ")
-//            println("      Q: ${firstCard.front}")
-//            println("      A: ${firstCard.back}\n")
-//
-//            println(">> [STEP 5] Simulating User Review via FSRS Engine...")
-//            println("   -> User studied the card and graded it exactly '3' (GOOD). Took 4 seconds.")
-//
-//            val reviewSubmit = FSRSReview(
-//                cardId = firstCard.id!!,
-//                grade = 3,
-//                timeSpentSeconds = 4L
-//            )
-//
-//            // Sending to Kotlin backend mathematically computing the review natively synced to Supabase
-//            val fsrsState = flashcardRpc.submitReview(reviewSubmit)
-//
-//            println("   [SUCCESS] FSRS State mathematically updated mapping to DB:")
-//            println("      - Stability Variable: ${fsrsState.stability}")
-//            println("      - Difficulty Variable: ${fsrsState.difficulty}")
-//            println("      - Future Retrievability Factor interval sets next review: ${fsrsState.nextReview}\n")
-//
-//            println(">> [STEP 6] Syncing Topic Readiness Score Rollups...")
-//            // Analytics will dynamically refresh from the chunk blending the stability vectors
-//            analytics = sessionRpc.getSessionAnalytics()
-//            println("   Session Topic Readiness computed natively:")
-//            println("     - Updated Session Readiness Avg: ${analytics.averageReadiness}%\n")
+            println("      Q: ${firstCard.front}")
+            println("   [SUCCESS] Received Card [${firstCard.id}] from AI Stream: ")
+            println("      A: ${firstCard.back}\n")
+
+            println(">> [STEP 5] Simulating User Review via FSRS Engine...")
+            println("   -> User studied the card and graded it exactly '3' (GOOD). Took 4 seconds.")
+
+            val reviewSubmit = FSRSReview(
+                cardId = firstCard.id!!,
+                grade = 3,
+                timeSpentSeconds = 4L
+            )
+
+            // Sending to Kotlin backend mathematically computing the review natively synced to Supabase
+            val fsrsState = flashcardRpc.submitReview(reviewSubmit)
+
+            println("   [SUCCESS] FSRS State mathematically updated mapping to DB:")
+            println("      - Stability Variable: ${fsrsState.stability}")
+            println("      - Difficulty Variable: ${fsrsState.difficulty}")
+            println("      - Future Retrievability Factor interval sets next review: ${fsrsState.nextReview}\n")
+
+            println(">> [STEP 6] Syncing Topic Readiness Score Rollups...")
+            // Analytics will dynamically refresh from the chunk blending the stability vectors
+            analytics = sessionRpc.getSessionAnalytics()
+            println("   Session Topic Readiness computed natively:")
+            println("     - Updated Session Readiness Avg: ${analytics.averageReadiness}%\n")
 
         } else {
             println("   [INFO] No flashcards were instantly yielded in the stream.")

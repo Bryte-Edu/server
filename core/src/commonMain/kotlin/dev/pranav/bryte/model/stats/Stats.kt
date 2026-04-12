@@ -23,7 +23,8 @@ data class FSRSState(
     val reps: Int = 0,
     val lapses: Int = 0,
     @SerialName("last_review") val lastReview: String? = null,
-    @SerialName("next_review") val nextReview: String? = null
+    @SerialName("next_review") val nextReview: String? = null,
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable

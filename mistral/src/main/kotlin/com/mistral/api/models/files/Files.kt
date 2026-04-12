@@ -12,13 +12,13 @@ data class FileListResponse(val data: List<FileItem>)
 data class FileItem(
     val id: String,
     val `object`: String,
-    val bytes: Integer,
+    val bytes: Int,
     @SerialName("created_at") val createdAt: Int,
     val filename: String,
     val purpose: String,
     @SerialName("sample_type") val sampleType: String,
     val source: String,
-    @SerialName("num_lines") val numLines: Integer? = null,
+    @SerialName("num_lines") val numLines: Int? = null,
     val mimetype: String? = null,
     val signature: String? = null
 )
