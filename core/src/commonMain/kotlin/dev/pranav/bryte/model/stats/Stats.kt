@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class FSRSReview(
-    val cardId: String,
+    val questionId: String,
     val grade: Int, // 1 = Again, 2 = Hard, 3 = Good, 4 = Easy
     val timeSpentSeconds: Long
 )
@@ -15,7 +15,7 @@ data class FSRSState(
     val id: String? = null,
     @SerialName("user_id") val userId: String,
     @SerialName("session_id") val sessionId: String,
-    @SerialName("card_id") val cardId: String,
+    @SerialName("question_id") val questionId: String,
     @SerialName("topic_id") val topicId: String,
     val state: Int = 0, // 0 = New, 1 = Learning, 2 = Review, 3 = Relearning
     val difficulty: Double = 0.0,
@@ -46,5 +46,11 @@ data class SessionAnalytics(
     val averageReadiness: Double,
     val totalTopicsLearned: Int,
     val completedReviews: Int,
-    val topics: List<TopicAnalytics>
+    val topics: List<TopicAnalytics>,
+    val accuracy: Double = 0.0,
+    val totalAttempted: Int = 0,
+    val overallPerformance: Double = 0.0,
+    val consistency: Double = 0.0,
+    val responseTime: Double = 0.0,
+    val recommendations: List<String> = emptyList()
 )

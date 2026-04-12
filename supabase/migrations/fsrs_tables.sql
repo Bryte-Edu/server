@@ -15,8 +15,12 @@ CREATE TABLE IF NOT EXISTS public.fsrs_states
 (
     id
 ) ON DELETE CASCADE,
-    session_id UUID NOT NULL,
-    card_id UUID NOT NULL,
+    session_id UUID NOT NULL REFERENCES sessions
+(
+    id
+)
+  ON DELETE CASCADE,
+    question_id UUID NOT NULL,
     topic_id UUID NOT NULL,
     state SMALLINT NOT NULL DEFAULT 0, -- 0 = New, 1 = Learning, 2 = Review, 3 = Relearning
     difficulty FLOAT8 NOT NULL DEFAULT 0.0,
@@ -25,9 +29,9 @@ CREATE TABLE IF NOT EXISTS public.fsrs_states
     lapses INT NOT NULL DEFAULT 0,
     last_review TEXT, -- Can be tracked as TIMESTAMPTZ, but kept as TEXT for serialization
     next_review TEXT, -- Same here
-    CONSTRAINT unique_card_user UNIQUE
+    CONSTRAINT unique_question_user UNIQUE
 (
-    card_id,
+    question_id,
     user_id
 )
     );
@@ -82,4 +86,3 @@ POLICY "Users can manage their own topic analytics"
     ON public.topic_analytics
     FOR ALL
     USING (auth.uid() = user_id);
-

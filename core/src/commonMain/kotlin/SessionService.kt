@@ -33,4 +33,15 @@ interface SessionService {
      * Retrieves the full session analytics rolling up all learned topics
      */
     suspend fun getSessionAnalytics(): dev.pranav.bryte.model.stats.SessionAnalytics
+
+    /**
+     * Submits an FSRS review for a question.
+     * Updates the spaced repetition algorithm state and recalculates the
+     * topic readiness score dynamically for the session.
+     *
+     * @param review The [dev.pranav.bryte.model.stats.FSRSReview] review containing the question ID and user's grade.
+     * @return The updated [dev.pranav.bryte.model.stats.FSRSState].
+     */
+    suspend fun submitReview(review: dev.pranav.bryte.model.stats.FSRSReview): dev.pranav.bryte.model.stats.FSRSState
+
 }

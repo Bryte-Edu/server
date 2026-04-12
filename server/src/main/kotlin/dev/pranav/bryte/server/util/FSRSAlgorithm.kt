@@ -16,11 +16,19 @@ object SpacedRepetitionScheduler {
         0.29, 2.61
     )
 
+    enum class State(val value: Int) {
+        New(0), Learning(1), Review(2), Relearning(3)
+    }
+
     fun calculateNextState(currentState: FSRSState?, grade: Int): FSRSState {
         val now = Clock.System.now()
         val s = currentState ?: FSRSState(
-            userId = "", sessionId = "", cardId = "", topicId = "",
-            state = 0, difficulty = 0.0, stability = 0.0, reps = 0, lapses = 0,
+            userId = "",
+            sessionId = "",
+            questionId = "",
+            topicId = "",
+            state = State.New.value,
+            difficulty = 0.0, stability = 0.0, reps = 0, lapses = 0,
             lastReview = now.toString(), nextReview = now.toString()
         )
 
@@ -71,7 +79,7 @@ object SpacedRepetitionScheduler {
             id = s.id,
             userId = s.userId,
             sessionId = s.sessionId,
-            cardId = s.cardId,
+            questionId = s.questionId,
             topicId = s.topicId,
             state = newStateCode,
             difficulty = newDifficulty,

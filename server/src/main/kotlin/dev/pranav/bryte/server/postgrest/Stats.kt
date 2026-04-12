@@ -9,15 +9,21 @@ import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
 class FSRSRepository(val postgrest: PostgrestQueryBuilder) {
-    suspend fun getByCardId(cardId: String): FSRSState? {
+    suspend fun getByQuestionId(questionId: String): FSRSState? {
         return postgrest.select {
-            filter { eq("card_id", cardId) }
+            filter { eq("question_id", questionId) }
         }.decodeSingleOrNull()
     }
 
     suspend fun getByTopicId(topicId: String): List<FSRSState> {
         return postgrest.select {
             filter { eq("topic_id", topicId) }
+        }.decodeList()
+    }
+
+    suspend fun getBySessionId(sessionId: String): List<FSRSState> {
+        return postgrest.select {
+            filter { eq("session_id", sessionId) }
         }.decodeList()
     }
 

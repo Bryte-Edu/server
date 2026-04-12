@@ -117,3 +117,8 @@ tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
         dependsOn(generateBuildConfig)
     }
 }
+
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
+    isZip64 = true
+    mergeServiceFiles()
+}

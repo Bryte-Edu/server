@@ -52,26 +52,25 @@ fun main() = runBlocking {
         println("     - Completed Reviews: ${analytics.completedReviews}")
         println("     - Average Readiness: ${analytics.averageReadiness}%\n")
 
-        println(">> [STEP 4] Streaming AI Generated Flashcards... (Waiting for 1 card)")
+        println(">> [STEP 4] Streaming AI Generated Questions... (Waiting for 1 question)")
         // Using K-RPC Flow to eagerly load a few cards matching the topic
-        val firstCard = flashcardRpc.flashcards().first()
+        val firstQuestion = sessionRpc.questions().first()
 
-        if (firstCard != null) {
-            println("      Q: ${firstCard.front}")
-            println("   [SUCCESS] Received Card [${firstCard.id}] from AI Stream: ")
-            println("      A: ${firstCard.back}\n")
+        if (firstQuestion != null) {
+            println("      Q: ${firstQuestion.content}")
+            println("   [SUCCESS] Received Question [${firstQuestion.id}] from AI Stream.")
 
             println(">> [STEP 5] Simulating User Review via FSRS Engine...")
-            println("   -> User studied the card and graded it exactly '3' (GOOD). Took 4 seconds.")
+            println("   -> User answered the question and graded it exactly '3' (GOOD). Took 4 seconds.")
 
             val reviewSubmit = FSRSReview(
-                cardId = firstCard.id!!,
+                questionId = firstQuestion.id!!,
                 grade = 3,
                 timeSpentSeconds = 4L
             )
 
             // Sending to Kotlin backend mathematically computing the review natively synced to Supabase
-            val fsrsState = flashcardRpc.submitReview(reviewSubmit)
+            val fsrsState = sessionRpc.submitReview(reviewSubmit)
 
             println("   [SUCCESS] FSRS State mathematically updated mapping to DB:")
             println("      - Stability Variable: ${fsrsState.stability}")
@@ -85,7 +84,7 @@ fun main() = runBlocking {
             println("     - Updated Session Readiness Avg: ${analytics.averageReadiness}%\n")
 
         } else {
-            println("   [INFO] No flashcards were instantly yielded in the stream.")
+            println("   [INFO] No questions were instantly yielded in the stream.")
             println("   Ensure the AI Parser has successfully embedded the chunk sequences in Supabase for this test.\n")
         }
 
