@@ -21,10 +21,11 @@ import kotlinx.rpc.krpc.serialization.json.json
 import kotlinx.rpc.withService
 
 class BryteClient(
-    private val baseUrl: String,
-    private val authToken: String? = null
+    var baseUrl: String,
+    var authToken: String? = null
 ) {
-    private val wsUrl = baseUrl.replace("http", "ws")
+    private val wsUrl: String
+        get() = baseUrl.replace("http", "ws")
 
     private val client = HttpClient {
         installKrpc {
@@ -32,9 +33,9 @@ class BryteClient(
                 json()
             }
         }
-        defaultRequest {
-            url(baseUrl)
-            authToken?.let { bearerAuth(it) }
+
+        install(DefaultRequest) {
+            // We use interceptors below for dynamic urls/auth, so we don't hardcode them here
         }
 
         install(WebSockets)
@@ -44,15 +45,34 @@ class BryteClient(
         }
     }
 
+    init {
+        client.plugin(HttpSend).intercept { request ->
+            request.url {
+                 // only override if the host is not fully specified or matches the old baseUrl
+                 // Actually, we can just set authority
+                 val currentBaseUrl = Url(baseUrl)
+                 protocol = currentBaseUrl.protocol
+                 host = currentBaseUrl.host
+                 port = currentBaseUrl.port
+            }
+            authToken?.let {
+                request.header(HttpHeaders.Authorization, "Bearer $it")
+            }
+            execute(request)
+        }
+    }
+
     suspend fun createSession(docType: DocumentType, source: String): SessionCreateResponse {
-        return client.post("/api/create-session") {
+        return client.post {
+            url("$baseUrl/api/create-session")
             setBody(CreateSessionRequest(docType, source))
             contentType(ContentType.Application.Json)
         }.body()
     }
 
     suspend fun getFlashcards(documentId: String): List<Flashcard> {
-        return client.post("/api/flashcards") {
+        return client.post {
+            url("$baseUrl/api/flashcards")
             setBody(FlashcardRequest(documentId))
             contentType(ContentType.Application.Json)
         }.body()

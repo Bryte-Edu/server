@@ -44,4 +44,8 @@ interface SessionService {
      */
     suspend fun submitReview(review: dev.pranav.bryte.model.stats.FSRSReview): dev.pranav.bryte.model.stats.FSRSState
 
+    /**
+     * Retrieves the historical analytics timeline for the current session
+     */
+    suspend fun getAnalyticsTimeline(): List<dev.pranav.bryte.model.stats.AnalyticsTimelineRow>
 }

@@ -9,10 +9,17 @@ import kotlin.reflect.KProperty
 
 class QuestionRepository(val postgrest: PostgrestQueryBuilder) {
 
-    suspend fun getById(id: String): Question {
+    suspend fun getById(id: String): Question? {
         return postgrest.select {
             filter { eq("id", id) }
-        }.decodeSingle()
+        }.decodeSingleOrNull()
+    }
+
+    suspend fun getByIds(ids: List<String>): List<Question> {
+        if (ids.isEmpty()) return emptyList()
+        return postgrest.select {
+            filter { isIn("id", ids) }
+        }.decodeList()
     }
 
     suspend fun getBySession(sessionId: String): List<Question> {

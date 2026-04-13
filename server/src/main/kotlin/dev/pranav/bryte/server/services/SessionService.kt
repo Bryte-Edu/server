@@ -7,16 +7,18 @@ import dev.pranav.bryte.model.session.Session
 import dev.pranav.bryte.model.stats.FSRSReview
 import dev.pranav.bryte.model.stats.FSRSState
 import dev.pranav.bryte.model.stats.TopicAnalytics
+import dev.pranav.bryte.model.stats.AnalyticsTimelineRow
 import dev.pranav.bryte.server.ai.QuestionGenerator
 import dev.pranav.bryte.server.postgrest.fsrsStates
 import dev.pranav.bryte.server.postgrest.topicAnalytics
+import dev.pranav.bryte.server.postgrest.analyticsTimeline
 import dev.pranav.bryte.server.util.SpacedRepetitionScheduler
 import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.questions
 import dev.pranav.bryte.server.util.ext.supabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-
+import kotlin.time.Clock
 
 class SessionServiceImpl(val session: Session) : SessionService {
 
@@ -53,8 +55,20 @@ class SessionServiceImpl(val session: Session) : SessionService {
     }
 
     override fun questions(): Flow<Question> = flow {
+        val fsrsRepo by supabase.fsrsStates()
+        val questionsRepo by supabase.questions()
+
+        val overdueStates = fsrsRepo.getOverdue(session.id, Clock.System.now().toString())
+        if (overdueStates.isNotEmpty()) {
+            val overdueIds = overdueStates.map { it.questionId }
+            val overdueQuestions = questionsRepo.getByIds(overdueIds)
+            for (q in overdueQuestions) {
+                emit(q)
+            }
+        }
+
         if (!generator.exhausted) {
-            generator.generateQuestions().collect { emit(it) }
+          generator.generateQuestions().collect { emit(it) }
         }
     }
 
@@ -162,6 +176,24 @@ class SessionServiceImpl(val session: Session) : SessionService {
         val updatedAnalytics = SpacedRepetitionScheduler.calculateReadiness(allTopicStates, currentAnalytics)
         topicAnalyticsRepo.upsert(updatedAnalytics)
 
+        // Snapshot timeline
+        val currentSessionAnalytics = getSessionAnalytics()
+        val timelineRepo by supabase.analyticsTimeline()
+        timelineRepo.insert(
+            AnalyticsTimelineRow(
+                userId = session.userId,
+                sessionId = session.id,
+                accuracy = currentSessionAnalytics.accuracy,
+                overallPerformance = currentSessionAnalytics.overallPerformance,
+                createdAt = Clock.System.now().toString()
+            )
+        )
+
         return savedState
+    }
+
+    override suspend fun getAnalyticsTimeline(): List<AnalyticsTimelineRow> {
+        val timelineRepo by supabase.analyticsTimeline()
+        return timelineRepo.getBySession(session.id)
     }
 }

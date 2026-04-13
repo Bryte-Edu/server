@@ -54,3 +54,13 @@ data class SessionAnalytics(
     val responseTime: Double = 0.0,
     val recommendations: List<String> = emptyList()
 )
+
+@Serializable
+data class AnalyticsTimelineRow(
+    val id: String? = null,
+    @SerialName("user_id") val userId: String,
+    @SerialName("session_id") val sessionId: String,
+    val accuracy: Double = 0.0,
+    @SerialName("overall_performance") val overallPerformance: Double = 0.0,
+    @SerialName("created_at") val createdAt: String? = null
+)
