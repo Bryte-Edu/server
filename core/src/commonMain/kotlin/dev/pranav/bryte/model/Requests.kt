@@ -10,5 +10,6 @@ data class FlashcardRequest(
 @Serializable
 data class CreateSessionRequest(
     val docType: DocumentType,
-    val source: String
+    val source: String,
+    val enableGraphExtraction: Boolean = false
 )

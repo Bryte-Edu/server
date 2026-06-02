@@ -15,7 +15,7 @@ import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.embeddings.local.LLMEmbedder
-import ai.koog.prompt.dsl.Prompt
+import ai.koog.prompt.Prompt
 import ai.koog.prompt.executor.clients.LLMClientException
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
@@ -282,7 +282,7 @@ class FlashcardGenerator(
 
         if (toolset.index >= documentTopics.size) {
             exhausted = true
-            return kotlinx.coroutines.flow.flow {
+            return flow {
                 existingCards.forEach { emit(it) }
             }
         }
@@ -340,7 +340,6 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
             },
             model = OpenAIModels.Chat.GPT5_2.copy(id = "gpt-5.2-chat"),
             maxAgentIterations = 150,
-            enforceSingleRun = false
         )
 
 
@@ -396,7 +395,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
     }
 
     private suspend fun AIAgentContext.historyIsTooLong(): Boolean = llm.readSession {
-        prompt.messages.sumOf { it.content.length } > 100_000
+        prompt.messages.sumOf { it.textContent().length } > 100_000
     }
 
     fun flashcardStrategy(
@@ -407,8 +406,8 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
 
         return strategy(name) {
             val nodeSendInput by nodeLLMRequest("sendInput")
-            val nodeExecuteTool by nodeExecuteTool()
-            val nodeSendToolResult by nodeLLMSendToolResult()
+            val nodeExecuteTool by nodeExecuteTools()
+            val nodeSendToolResult by nodeLLMSendToolResults()
 
             val compressHistory by nodeLLMCompressHistory<Flow<StreamFrame>>(
                 "compressHistory",
@@ -443,7 +442,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                                         this@launch.cancel()
                                     }
                                 }
-                            } catch (e: CancellationException) {
+                            } catch (_: CancellationException) {
                                 // Expected completion via cancellation
                             }
                         }.join()
@@ -456,24 +455,24 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
 
             edge(
                 (nodeSendInput forwardTo nodeExecuteTool)
-                        onToolCall { true }
+                        onToolCalls { true }
             )
 
             edge(
                 (nodeSendInput forwardTo returnStream)
-                        onAssistantMessage { true }
+                        onTextMessage { true }
             )
 
             edge(nodeExecuteTool forwardTo nodeSendToolResult)
 
             edge(
                 (nodeSendToolResult forwardTo returnStream)
-                        onAssistantMessage { true }
+                        onTextMessage { true }
             )
 
             edge(
-                (nodeSendToolResult forwardTo nodeExecuteTool)
-                        onToolCall { true }
+                nodeSendToolResult forwardTo nodeExecuteTool
+                        onToolCalls { true }
             )
 
             edge(
@@ -538,10 +537,14 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         )
 
                         emit(flashcard)
-                        try {
-                            flashcards.insert(flashcard)
-                        } catch (e: Exception) {
-                            println("Failed to insert flashcard to DB: ${e.message}")
+                        coroutineScope {
+                            launch(Dispatchers.IO) {
+                                try {
+                                    flashcards.insert(flashcard)
+                                } catch (e: Exception) {
+                                    println("Failed to insert flashcard to DB: ${e.message}")
+                                }
+                            }
                         }
 
                         front = ""
@@ -596,10 +599,14 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         )
 
                         emit(flashcard)
-                        try {
-                            flashcards.insert(flashcard)
-                        } catch (e: Exception) {
-                            println("Failed to insert flashcard closing stream to DB: ${e.message}")
+                        coroutineScope {
+                            launch(Dispatchers.IO) {
+                                try {
+                                    flashcards.insert(flashcard)
+                                } catch (e: Exception) {
+                                    println("Failed to insert flashcard to DB: ${e.message}")
+                                }
+                            }
                         }
                     }
                 }

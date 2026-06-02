@@ -25,6 +25,12 @@ class DocumentsRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeSingle()
     }
 
+    suspend fun getBySourceHash(hash: String): DocumentItem? {
+        return postgrest.select {
+            filter { eq("source_hash", hash) }
+        }.decodeSingleOrNull()
+    }
+
     suspend fun insert(doc: DocumentItem): DocumentItem {
         return postgrest.insert(doc) {
             select()

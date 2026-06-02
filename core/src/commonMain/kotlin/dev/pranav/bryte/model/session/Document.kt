@@ -13,7 +13,9 @@ data class DocumentItem(
     val createdAt: String = "",
     val metadata: Map<String, String> = emptyMap(),
     val type: String = "pdf",
-    val source: String
+    val source: String,
+    @SerialName("source_hash")
+    val sourceHash: String? = null
 )
 
 @Serializable

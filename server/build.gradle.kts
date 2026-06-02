@@ -15,10 +15,6 @@ plugins {
 
 application {
     mainClass = "io.ktor.server.cio.EngineMain"
-
-    java {
-
-    }
 }
 
 dependencies {
@@ -27,17 +23,17 @@ dependencies {
 
     implementation(kotlin("reflect"))
 
-    implementation("io.github.jan-tennert.supabase:supabase-kt:3.5.0")
-    implementation("io.github.jan-tennert.supabase:auth-kt:3.5.0")
-    implementation("io.github.jan-tennert.supabase:storage-kt:3.5.0")
-    implementation("io.github.jan-tennert.supabase:postgrest-kt:3.5.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1-0.6.x-compat")
+    implementation("io.github.jan-tennert.supabase:supabase-kt:3.6.0")
+    implementation("io.github.jan-tennert.supabase:auth-kt:3.6.0")
+    implementation("io.github.jan-tennert.supabase:storage-kt:3.6.0")
+    implementation("io.github.jan-tennert.supabase:postgrest-kt:3.6.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
 
-    implementation("org.neo4j:neo4j:2026.03.1")
+    implementation("org.neo4j:neo4j:2026.05.0")
 
-    implementation("com.github.teamnewpipe:NewPipeExtractor:18757880f6")
+    implementation("com.github.teamnewpipe:NewPipeExtractor:0.26.2")
 
-    implementation("com.openai:openai-java:4.31.0")
+    implementation("com.openai:openai-java:4.37.0")
     implementation("com.cohere:cohere-java:1.10.1")
 
     implementation("io.github.flaxoos:ktor-server-rate-limiting:2.3.0")
@@ -48,12 +44,12 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-server:$kotlinx_rpc_version")
     implementation("org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-client:$kotlinx_rpc_version")
-    implementation("com.github.Bryte-Edu.koog:koog-ktor:develop-SNAPSHOT")
+    implementation("ai.koog:koog-ktor:$koog_version")
     implementation("io.insert-koin:koin-ktor:$koin_version")
     implementation("io.insert-koin:koin-logger-slf4j:$koin_version")
     implementation("io.ktor:ktor-server-html-builder")
     implementation("org.jetbrains.kotlinx:kotlinx-html:$kotlinx_html_version")
-    implementation("org.jetbrains.kotlin-wrappers:kotlin-css:2026.4.5")
+    implementation("org.jetbrains.kotlin-wrappers:kotlin-css:2026.5.6")
     implementation("dev.hayden:khealth:3.0.2")
     implementation("io.ktor:ktor-server-host-common")
     implementation("io.ktor:ktor-server-status-pages")
@@ -67,8 +63,8 @@ dependencies {
     implementation("io.ktor:ktor-server-cio")
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("io.ktor:ktor-server-config-yaml")
-    implementation("io.ktor:ktor-client-cio:3.4.2")
-    implementation("io.ktor:ktor-server-sse:3.4.2")
+    implementation("io.ktor:ktor-client-cio")
+    implementation("io.ktor:ktor-server-sse")
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }

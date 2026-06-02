@@ -20,6 +20,21 @@ import io.ktor.server.routing.*
 fun Application.configureSessionRoutes() {
     routing {
         authenticate("auth-jwt") {
+            get("/api/graph/{documentId}") {
+                val userId by call.userId()
+                val documentId = call.parameters["documentId"] ?: throw BadRequestException("documentId is required")
+
+                try {
+                    val graph = Neo4jManager()
+                    val result = graph.getGraphVisualization(userId, documentId)
+                    call.respond(HttpStatusCode.OK, result)
+                } catch (e: Exception) {
+                    println("GRAPH VIZ EXCEPTION: ${e.message}")
+                    e.printStackTrace()
+                    throw ExternalServiceException("Failed to fetch graph visualization: ${e.message}")
+                }
+            }
+
             post("/api/create-session") {
                 val userId by call.userId()
                 val sessions by supabase.sessions()

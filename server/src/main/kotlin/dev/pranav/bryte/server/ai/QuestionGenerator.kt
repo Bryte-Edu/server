@@ -11,7 +11,7 @@ import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.embeddings.local.LLMEmbedder
-import ai.koog.prompt.dsl.Prompt
+import ai.koog.prompt.Prompt
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
@@ -320,16 +320,16 @@ class QuestionGenerator(
 
         val strategy = strategy<String, Flow<StreamFrame>>("question-generator-single-chunk") {
             val sendInput by nodeLLMRequest()
-            val runTools by nodeExecuteTool()
-            val sendToolResults by nodeLLMSendToolResult()
+            val runTools by nodeExecuteTools()
+            val sendToolResults by nodeLLMSendToolResults()
 
             val returnStream by nodeLLMRequestStreaming("questions", questionsStructure)
 
             edge(nodeStart forwardTo sendInput)
-            edge(sendInput forwardTo runTools onToolCall { true })
+            edge(sendInput forwardTo runTools onToolCalls { true })
             edge(runTools forwardTo sendToolResults)
-            edge(sendToolResults forwardTo runTools onToolCall { true })
-            edge(sendToolResults forwardTo returnStream onAssistantMessage { true })
+            edge(sendToolResults forwardTo runTools onToolCalls { true })
+            edge(sendToolResults forwardTo returnStream onTextMessage { true })
             edge(returnStream forwardTo nodeFinish)
         }
 
@@ -372,22 +372,22 @@ class QuestionGenerator(
         val agentConfig = AIAgentConfig(
             prompt = Prompt.build("Question Generation Prompt") {
                 system(systemPrompt)
-            }, model = GoogleModels.Gemini2_5FlashLite, maxAgentIterations = 50, enforceSingleRun = false
+            }, model = GoogleModels.Gemini2_5FlashLite, maxAgentIterations = 50
         )
 
 
         val agentStrategy = strategy<String, Flow<StreamFrame>>("question-generator") {
             val sendInput by nodeLLMRequest()
-            val runTools by nodeExecuteTool()
-            val sendToolResults by nodeLLMSendToolResult()
+            val runTools by nodeExecuteTools()
+            val sendToolResults by nodeLLMSendToolResults()
 
             val returnStream by nodeLLMRequestStreaming("questions", questionsStructure)
 
             edge(nodeStart forwardTo sendInput)
-            edge(sendInput forwardTo runTools onToolCall { true })
+            edge(sendInput forwardTo runTools onToolCalls { true })
             edge(runTools forwardTo sendToolResults)
-            edge(sendToolResults forwardTo runTools onToolCall { true })
-            edge(sendToolResults forwardTo returnStream onAssistantMessage { true })
+            edge(sendToolResults forwardTo runTools onToolCalls { true })
+            edge(sendToolResults forwardTo returnStream onTextMessage { true })
             edge(returnStream forwardTo nodeFinish)
         }
 

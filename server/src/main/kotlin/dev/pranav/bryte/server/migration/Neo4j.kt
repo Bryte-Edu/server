@@ -248,7 +248,12 @@ RETURN
         }
     }
 
-    suspend fun interLinkWithDocumentBias(userId: String, threshold: Double = 0.65, bias: Double = 0.15) {
+    suspend fun interLinkWithDocumentBias(
+        userId: String,
+        documentId: String? = null,
+        threshold: Double = 0.65,
+        bias: Double = 0.15
+    ) {
         var isReady = false
         while (!isReady) {
             delay(2000)
@@ -257,8 +262,14 @@ RETURN
 
         driver.session().use { session ->
             session.executeWrite { tx ->
-                val cypher = $$"""
-                MATCH (u:User {id: $userId})-[:OWNS]->(d1:Document)-[:HAS_PART]->(c1:Chunk)
+                val matchClause = if (documentId != null) {
+                    "MATCH (u:User {id: $$userId})-[:OWNS]->(d1:Document {id: $$documentId})-[:HAS_PART]->(c1:Chunk)"
+                } else {
+                    "MATCH (u:User {id: $$userId})-[:OWNS]->(d1:Document)-[:HAS_PART]->(c1:Chunk)"
+                }
+
+                val cypher = """
+                $matchClause
                 
                 CALL {
                     WITH c1
@@ -268,7 +279,7 @@ RETURN
                 }
                 
                 // Find document of the neighbor
-                MATCH (d2:Document)-[:HAS_PART]->(c2)
+                MATCH (u:User {id: $userId})-[:OWNS]->(d2:Document)-[:HAS_PART]->(c2)
                 
                 // Calculate Weighted Score: Add bias if in same document
                 WITH c1, c2, score, d1, d2,
@@ -283,7 +294,12 @@ RETURN
                     r.originalSimilarity = score
             """.trimIndent()
 
-                tx.run(cypher, Values.parameters("userId", userId, "threshold", threshold, "bias", bias)).consume()
+                val params = mutableMapOf<String, Any>("userId" to userId, "threshold" to threshold, "bias" to bias)
+                if (documentId != null) {
+                    params["documentId"] = documentId
+                }
+
+                tx.run(cypher, params).consume()
             }
         }
     }
@@ -314,8 +330,8 @@ RETURN
                 
                 // 4. Create the relationship
                 WITH target, neighbor, score
-                MATCH (docA:Document)-[:HAS_PART]->(target)
-                MATCH (docB:Document)-[:HAS_PART]->(neighbor)
+                MATCH (u:User {id: $userId})-[:OWNS]->(docA:Document)-[:HAS_PART]->(target)
+                MATCH (u)-[:OWNS]->(docB:Document)-[:HAS_PART]->(neighbor)
                 
                 MERGE (target)-[r:RELATED_TO]->(neighbor)
                 SET r.weight = score,
@@ -361,4 +377,49 @@ RETURN
     }
 
     fun close() = driver.close()
+
+    fun getGraphVisualization(
+        userId: String,
+        documentId: String,
+        maxHops: Int = 3,
+        maxLinksPerNode: Int = 5
+    ): Map<String, Any> {
+        return driver.session().use { session ->
+            session.executeRead { tx ->
+                val cypher = """
+                    MATCH path = (u:User {id: $$userId})-[:OWNS]->(d:Document {id: $$documentId})-[:HAS_PART]->(start:Chunk)-[:RELATED_TO*0..$$maxHops]-(c:Chunk)
+                    WITH collect(DISTINCT c) AS allNodes
+                    
+                    UNWIND allNodes AS node
+                    CALL {
+                        WITH node
+                        MATCH (node)-[r:RELATED_TO]-(m:Chunk)
+                        WHERE m IN allNodes
+                        RETURN r ORDER BY r.weight DESC LIMIT $$maxLinksPerNode
+                    }
+                    
+                    WITH allNodes, collect(DISTINCT r) AS finalRels
+                    
+                    RETURN 
+                        [n IN allNodes | {id: n.id, label: n.header}] AS nodes,
+                        [rel IN finalRels | {source: startNode(rel).id, target: endNode(rel).id, weight: rel.weight, isInternal: rel.isInternal}] AS edges
+                """.trimIndent()
+
+                val result = tx.run(
+                    cypher, mapOf(
+                        "userId" to userId,
+                        "documentId" to documentId,
+                        "maxHops" to maxHops,
+                        "maxLinksPerNode" to maxLinksPerNode
+                    )
+                )
+
+                if (result.hasNext()) {
+                    result.single().asMap()
+                } else {
+                    mapOf("nodes" to emptyList<Any>(), "edges" to emptyList<Any>())
+                }
+            }
+        }
+    }
 }

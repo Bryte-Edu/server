@@ -44,7 +44,7 @@ class YouTube : DocParser<String> {
             },
             model = GoogleModels.Gemini2_5Flash,
             fixingParser = StructureFixingParser(
-                model = GoogleModels.Gemini2_0FlashLite001,
+                model = GoogleModels.Gemini2_5FlashLite,
                 retries = 4
             )
         )

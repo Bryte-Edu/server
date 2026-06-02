@@ -23,7 +23,6 @@ kotlin {
             api("io.ktor:ktor-client-cio:$ktor_version")
             implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
             implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
-
         }
     }
 }

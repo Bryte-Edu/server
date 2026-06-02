@@ -9,10 +9,10 @@ import dev.pranav.bryte.model.SessionCreateResponse
 import dev.pranav.bryte.model.card.Flashcard
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.rpc.krpc.ktor.client.installKrpc
@@ -27,15 +27,11 @@ class BryteClient(
     private val wsUrl: String
         get() = baseUrl.replace("http", "ws")
 
-    private val client = HttpClient {
+    private val client = HttpClient(io.ktor.client.engine.cio.CIO) {
         installKrpc {
             serialization {
                 json()
             }
-        }
-
-        install(DefaultRequest) {
-            // We use interceptors below for dynamic urls/auth, so we don't hardcode them here
         }
 
         install(WebSockets)
@@ -45,26 +41,16 @@ class BryteClient(
         }
     }
 
-    init {
-        client.plugin(HttpSend).intercept { request ->
-            request.url {
-                 // only override if the host is not fully specified or matches the old baseUrl
-                 // Actually, we can just set authority
-                 val currentBaseUrl = Url(baseUrl)
-                 protocol = currentBaseUrl.protocol
-                 host = currentBaseUrl.host
-                 port = currentBaseUrl.port
-            }
-            authToken?.let {
-                request.header(HttpHeaders.Authorization, "Bearer $it")
-            }
-            execute(request)
+    private fun HttpRequestBuilder.applyAuth() {
+        authToken?.let {
+            header(HttpHeaders.Authorization, "Bearer $it")
         }
     }
 
     suspend fun createSession(docType: DocumentType, source: String): SessionCreateResponse {
         return client.post {
             url("$baseUrl/api/create-session")
+            applyAuth()
             setBody(CreateSessionRequest(docType, source))
             contentType(ContentType.Application.Json)
         }.body()
@@ -73,9 +59,16 @@ class BryteClient(
     suspend fun getFlashcards(documentId: String): List<Flashcard> {
         return client.post {
             url("$baseUrl/api/flashcards")
+            applyAuth()
             setBody(FlashcardRequest(documentId))
             contentType(ContentType.Application.Json)
         }.body()
+    }
+
+    suspend fun getGraphVisualization(documentId: String): String {
+        return client.get("$baseUrl/api/graph/$documentId") {
+            applyAuth()
+        }.bodyAsText()
     }
 
     suspend fun getSessionRpc(sessionId: String): SessionService {

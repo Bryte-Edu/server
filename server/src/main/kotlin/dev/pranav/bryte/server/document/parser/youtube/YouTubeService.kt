@@ -16,9 +16,7 @@ object YouTubeService {
 
             val subtitle = runCatching {
                 it.fetchPage()
-                it.subtitlesDefault
-                    .filter { it.languageTag == "en" }
-                    .firstOrNull() ?: it.subtitlesDefault.firstOrNull()
+                it.subtitlesDefault.firstOrNull { it.languageTag == "en" } ?: it.subtitlesDefault.firstOrNull()
             }
 
             val transcript = subtitle.getOrNull()?.content?.let { subtitleUrl ->
