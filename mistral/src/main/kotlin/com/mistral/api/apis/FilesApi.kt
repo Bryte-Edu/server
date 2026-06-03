@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -12,9 +11,7 @@ import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import java.io.File
-
 class FilesApi(private val client: MistralClient) {
-
     /**
      * Upload a file to the Mistral API.
      *
@@ -33,12 +30,10 @@ class FilesApi(private val client: MistralClient) {
             })
         }) { header(client.authHeader()) }
 
-
         val status = resp.status.value
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
     /**
      * List files with optional filtering and pagination.
      *
@@ -75,7 +70,6 @@ class FilesApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
     /**
      * Get a file by its ID.
      *
@@ -91,7 +85,6 @@ class FilesApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
     /**
      * Delete a file by its ID.
      *
@@ -103,7 +96,6 @@ class FilesApi(private val client: MistralClient) {
         val status = resp.status.value
         if (status !in 200..299) throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
     /**
      * Download the file content as a ByteArray.
      *
@@ -116,7 +108,6 @@ class FilesApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
     /**
      * Get a signed URL for downloading the file. The URL is valid for a limited time (default 24 hours).
      * You can specify a custom expiry time in hours

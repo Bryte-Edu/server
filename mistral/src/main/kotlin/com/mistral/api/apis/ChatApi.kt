@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -16,9 +15,7 @@ import io.ktor.utils.io.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
-
 class ChatApi(private val client: MistralClient) {
-
 
     suspend fun create(req: ChatCompletionRequest): ChatCompletionResponse {
         val resp = client.http.post(client.basePath("/v1/chat/completions")) {
@@ -31,7 +28,6 @@ class ChatApi(private val client: MistralClient) {
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
 
-
     fun stream(req: ChatCompletionRequest): Flow<ChatStreamEvent> = flow {
         val reqStream = req.copy(stream = true)
         val resp: HttpResponse = client.http.post(client.basePath("/v1/chat/completions")) {
@@ -41,7 +37,6 @@ class ChatApi(private val client: MistralClient) {
         }
         val status = resp.status.value
         if (status !in 200..299) throw MistralApiException(status, resp.status.description, resp.bodyAsText())
-
 
         val channel: ByteReadChannel = resp.body()
         val parser = SseParser()

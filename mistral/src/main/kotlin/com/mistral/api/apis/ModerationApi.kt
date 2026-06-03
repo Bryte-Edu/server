@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -10,7 +9,6 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-
 
 class ModerationApi(private val client: MistralClient) {
     suspend fun moderateText(req: ModerationRequest): ModerationResponse {

@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -11,9 +10,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 
-
 class ModelsApi(private val client: MistralClient) {
-
 
     suspend fun listModels(): ModelsListResponse = client.http.get(client.basePath("/v1/models")) {
         header(client.authHeader())
@@ -27,7 +24,6 @@ class ModelsApi(private val client: MistralClient) {
         )
     }
 
-
     suspend fun getModel(id: String): ModelDetail = client.http.get(client.basePath("/v1/models/$id")) {
         header(client.authHeader())
         accept(ContentType.Application.Json)
@@ -39,7 +35,6 @@ class ModelsApi(private val client: MistralClient) {
             resp.bodyAsText()
         )
     }
-
 
 // Patch, delete, archive/unarchive could be added here following spec
 }

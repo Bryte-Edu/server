@@ -88,11 +88,9 @@ fun main() {
 
                 val graph = SingleGraph("BryteCoreGraph")
 
-                // 1. Establish structural styling rules cleanly for GraphStream 2.0
                 graph.setAttribute("ui.antialias", true)
                 graph.setAttribute("ui.quality", true)
 
-                // 2. Map out unique nodes across the network topology
                 rawNodes.forEachIndexed { index, nodeElement ->
                     val n = nodeElement.jsonObject
                     val id = n["id"]?.jsonPrimitive?.content ?: ""
@@ -102,13 +100,11 @@ fun main() {
                     node.setAttribute("ui.label", label)
 
                     if (index == 0) {
-                        // Document Root Style configuration
                         node.setAttribute(
                             "ui.style",
                             "fill-color: rgb(239,68,68); size: 36px; text-size: 15px; text-background-mode: rounded-box; text-background-color: rgb(255,255,255); text-alignment: under; text-padding: 3px; text-style: bold;"
                         )
                     } else {
-                        // Standard Chunk Style configuration
                         node.setAttribute(
                             "ui.style",
                             "fill-color: rgb(59,130,246); size: 24px; text-size: 13px; text-background-mode: rounded-box; text-background-color: rgb(255,255,255); text-alignment: under; text-padding: 3px;"
@@ -127,24 +123,19 @@ fun main() {
                         val edgeId = "edge_${idx}_${source}_${target}"
                         val edge = graph.addEdge(edgeId, source, target)
 
-                        // FIXED: Changed 'width' to 'size' to match GraphStream's grammar specifications
                         if (isInternal) {
-                            // Internal structural link styling
                             edge.setAttribute("ui.style", "fill-color: rgb(203,213,225); size: 1px;")
                         } else {
-                            // External similarity link styling
                             edge.setAttribute("ui.style", "fill-color: rgb(147,197,253); size: 2px;")
                         }
                     }
                 }
 
-                // 4. Initialize multi-threaded rendering engine viewports
                 val viewer = SwingViewer(graph, Viewer.ThreadingModel.GRAPH_IN_ANOTHER_THREAD)
                 viewer.enableAutoLayout()
 
                 val graphViewComponent = viewer.addDefaultView(false) as Component
 
-                // 5. Hot-swap onto the main layout display window panel
                 graphContainerPanel.removeAll()
                 graphContainerPanel.add(graphViewComponent, BorderLayout.CENTER)
                 graphContainerPanel.revalidate()

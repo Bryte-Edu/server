@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -11,7 +10,6 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 
-
 class LibrariesApi(private val client: MistralClient) {
     suspend fun listLibraries(): LibrariesListResponse {
         val resp =
@@ -20,7 +18,6 @@ class LibrariesApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
 
     suspend fun getLibrary(id: String): LibraryDetail {
         val resp =

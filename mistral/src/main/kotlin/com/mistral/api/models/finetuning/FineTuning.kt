@@ -1,8 +1,6 @@
 package com.mistral.api.models.finetuning
 
-
 import kotlinx.serialization.Serializable
-
 
 @Serializable
 data class FineTuneCreateRequest(
@@ -11,10 +9,8 @@ data class FineTuneCreateRequest(
     val hyperparameters: Map<String, String>? = null
 )
 
-
 @Serializable
 data class FineTuneJobResponse(val id: String, val status: String, val model: String? = null)
-
 
 @Serializable
 data class FineTuneListResponse(val data: List<FineTuneJobResponse>)

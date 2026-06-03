@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -12,7 +11,6 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 
-
 class AgentsApi(private val client: MistralClient) {
     suspend fun listAgents(): AgentsListResponse {
         val resp =
@@ -22,7 +20,6 @@ class AgentsApi(private val client: MistralClient) {
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
 
-
     suspend fun getAgent(id: String): AgentDetail {
         val resp =
             client.http.get(client.basePath("/v1/agents/$id")) { header(client.authHeader()); accept(ContentType.Application.Json) }
@@ -30,7 +27,6 @@ class AgentsApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
 
     suspend fun createAgent(req: AgentCreateRequest): AgentDetail {
         val resp = client.http.post(client.basePath("/v1/agents")) {
@@ -40,7 +36,4 @@ class AgentsApi(private val client: MistralClient) {
         if (status in 200..299) return resp.body()
         throw MistralApiException(status, resp.status.description, resp.bodyAsText())
     }
-
-
-// update, delete, versions endpoints omitted for brevity but follow same pattern
 }

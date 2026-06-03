@@ -1,13 +1,10 @@
 package com.mistral.api.models.files
 
-
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-
 @Serializable
 data class FileListResponse(val data: List<FileItem>)
-
 @Serializable
 data class FileItem(
     val id: String,

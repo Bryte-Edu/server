@@ -1,9 +1,7 @@
 package com.mistral.api.models.chat
 
-
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-
 
 @Serializable
 data class ChatCompletionRequest(
@@ -14,10 +12,8 @@ data class ChatCompletionRequest(
     @SerialName("max_tokens") val maxTokens: Int? = null
 )
 
-
 @Serializable
 data class ChatMessage(val role: String, val content: String)
-
 
 @Serializable
 data class ChatCompletionResponse(
@@ -27,14 +23,12 @@ data class ChatCompletionResponse(
     val choices: List<ChatChoice>
 )
 
-
 @Serializable
 data class ChatChoice(
     val index: Int,
     val message: ChatMessage,
     @SerialName("finish_reason") val finishReason: String? = null
 )
-
 
 @Serializable
 data class ChatStreamEvent(val payload: String)

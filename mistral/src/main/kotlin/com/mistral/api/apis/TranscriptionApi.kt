@@ -1,6 +1,5 @@
 package com.mistral.api.apis
 
-
 import com.mistral.api.MistralClient
 import com.mistral.api.exceptions.MistralApiException
 import com.mistral.api.header
@@ -12,7 +11,6 @@ import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import java.io.File
-
 
 class TranscriptionApi(private val client: MistralClient) {
     suspend fun create(req: TranscriptionRequest, file: File? = null): TranscriptionResponse {

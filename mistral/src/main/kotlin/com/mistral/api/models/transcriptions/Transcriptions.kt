@@ -1,7 +1,5 @@
 package com.mistral.api.models.transcriptions
-
 import kotlinx.serialization.Serializable
-
 @Serializable
 data class TranscriptionRequest(
     val model: String,
@@ -10,14 +8,12 @@ data class TranscriptionRequest(
     val temperature: Double? = null
 )
 
-
 @Serializable
 data class TranscriptionResponse(
     val text: String,
     val language: String? = null,
     val segments: List<TranscriptionSegment>? = null
 )
-
 
 @Serializable
 data class TranscriptionSegment(
