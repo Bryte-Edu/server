@@ -1,76 +1,63 @@
-# bryte
+# Bryte Backend
 
-This project was created using the [Ktor Project Generator](https://start.ktor.io).
+Server-side infrastructure for the Bryte learning application. It manages multi-source document ingestion, AI-driven
+content synthesis, and mathematically optimized review scheduling through a multi-module Kotlin architecture.
 
-Here are some useful links to get you started:
+## Server-Side Content Synthesis (Flashcards & Questions)
 
-- [Ktor Documentation](https://ktor.io/docs/home.html)
-- [Ktor GitHub page](https://github.com/ktorio/ktor)
-- The [Ktor Slack chat](https://app.slack.com/client/T09229ZC6/C0A974TJ9). You'll need
-  to [request an invite](https://surveys.jetbrains.com/s3/kotlin-slack-sign-up) to join.
+The backend utilizes the **Koog framework** and multi-agent workflows to transform processed document chunks into
+structured learning material.
 
-## Features
+- **Evaluative Content:** Synthesizes pedagogical flashcards (front/back with rationales) and multiple quiz formats
+  including Multiple Choice (MCQ), "Spot the Error", and "Match the Following".
+- **Agentic Orchestration:** Implements `AIAgentGraphStrategy` to maintain state and coherence over long-context
+  documents (100k+ tokens) using autonomous history compression and adaptive tool-calling.
+- **Incremental Stream Parsing:** Features a resilient Markdown-to-JSON parser to process fragmented LLM output in
+  real-time, ensuring structural integrity and allowing the client to consume generated objects via Kotlin Flows.
 
-Here's a list of features included in this project:
+## Document Ingestion & Normalization Pipelines
 
-| Name                                                                   | Description                                                                        |
-|------------------------------------------------------------------------|------------------------------------------------------------------------------------|
-| [Shutdown URL](https://start.ktor.io/p/shutdown-url)                   | Enables a URL that shuts down the server when accessed                             |
-| [Rate Limiting](https://start.ktor.io/p/ktor-server-rate-limiting)     | Manage request rate limiting as you see fit                                        |
-| [Routing](https://start.ktor.io/p/routing)                             | Provides a structured routing DSL                                                  |
-| [WebSockets](https://start.ktor.io/p/ktor-websockets)                  | Adds WebSocket protocol support for bidirectional client connections               |
-| [Dependency Injection](https://start.ktor.io/p/ktor-di)                | Enables dependency injection for your server                                       |
-| [Content Negotiation](https://start.ktor.io/p/content-negotiation)     | Provides automatic content conversion according to Content-Type and Accept headers |
-| [kotlinx.serialization](https://start.ktor.io/p/kotlinx-serialization) | Handles JSON serialization using kotlinx.serialization library                     |
-| [kotlinx.rpc](https://start.ktor.io/p/kotlinx-rpc)                     | Adds remote procedure call (RPC) routing                                           |
-| [Koog](https://start.ktor.io/p/koog)                                   | Integrate LLMs and build AI Agents with Koog framework                             |
-| [Koin](https://start.ktor.io/p/koin)                                   | Provides dependency injection                                                      |
-| [HTML DSL](https://start.ktor.io/p/html-dsl)                           | Generates HTML from Kotlin DSL                                                     |
-| [CSS DSL](https://start.ktor.io/p/css-dsl)                             | Generates CSS from Kotlin DSL                                                      |
-| [KHealth](https://start.ktor.io/p/khealth)                             | A simple and customizable health plugin                                            |
-| [Status Pages](https://start.ktor.io/p/status-pages)                   | Provides exception handling for routes                                             |
-| [Static Content](https://start.ktor.io/p/static-content)               | Serves static files from defined locations                                         |
-| [Resources](https://start.ktor.io/p/resources)                         | Provides type-safe routing                                                         |
-| [Request Validation](https://start.ktor.io/p/request-validation)       | Adds validation for incoming requests                                              |
-| [Sessions](https://start.ktor.io/p/ktor-sessions)                      | Adds support for persistent sessions through cookies or headers                    |
-| [Authentication](https://start.ktor.io/p/auth)                         | Provides extension point for handling the Authorization header                     |
-| [Authentication JWT](https://start.ktor.io/p/auth-jwt)                 | Handles JSON Web Token (JWT) bearer authentication scheme                          |
-| [Default Headers](https://start.ktor.io/p/default-headers)             | Adds a default set of headers to HTTP responses                                    |
+- **YouTube Extraction:** Features a native implementation of the **NewPipe Extractor** to harvest transcripts and
+  metadata directly. Includes custom TTML-to-text sanitization to remove artifacts and speaker labels.
+- **Web Normalization:** Uses Gemini-based parsing with a recursive `StructureFixingParser` to convert raw, noisy HTML
+  into structured study notes and hierarchical topics.
+- **OCR & Technical Extraction:** Includes a dedicated `mistral` SDK module providing a feature-complete implementation
+  of the Mistral AI OCR, File, and Chat APIs for high-fidelity processing of complex PDFs.
 
-## Structure
+## Cognitive Scheduling Engine (FSRS v4)
 
-This project includes the following modules:
+The backend implements the **Free Spaced Repetition Scheduler (FSRS v4)** to manage adaptive review cycles.
 
-| Path             | Description                                             |
-|------------------|---------------------------------------------------------|
-| [server](server) | A runnable Ktor server implementation                   |
-| [core](core)     | Domain objects and interfaces                           |
-| [client](client) | Extensions for making requests to the server using Ktor |
+- **Scheduling Logic:** Predicts optimal review intervals by tracking **Stability**, **Difficulty**, and *
+  *Retrievability** for each learnable unit.
+- **Cognitive Analytics:** Derives real-time "Readiness Scores" and mastery metrics from historical performance data and
+  lapse counts.
+- **Multiplatform Parity:** Domain models and service interfaces reside in a **Kotlin Multiplatform (KMP)** core,
+  ensuring absolute behavioral consistency across the ecosystem while calculations are managed by the server.
 
-## Building
+## Knowledge Graph & Semantic Retrieval (GraphRAG)
 
-To build the project, use one of the following tasks:
+Integrates high-dimensional vector search with topological graph analysis in **Neo4j** to manage semantic context.
 
-| Task                                            | Description                                                          |
-|-------------------------------------------------|----------------------------------------------------------------------|
-| `./gradlew build`                               | Build everything                                                     |
-| `./gradlew :server:buildFatJar`                 | Build an executable JAR of the server with all dependencies included |
-| `./gradlew :server:buildImage`                  | Build the docker image to use with the fat JAR                       |
-| `./gradlew :server:publishImageToLocalRegistry` | Publish the docker image locally                                     |
+- **Relationship Mapping:** Models conceptual dependencies (e.g., "Prerequisite Of", "Synthesizes") between document
+  sections to support multi-hop context retrieval.
+- **Weighted Retrieval:** Employs a Cypher-driven engine that balances local document focus with global knowledge
+  bridges based on embedding similarity and user-specific library data.
+- **Knowledge Inter-linking:** Automatically establishes semantic relationships between content chunks during ingestion
+  to build a persistent knowledge map.
 
-## Running
+## System Architecture & Ecosystem Interoperability
 
-To run the project, use one of the following tasks:
+- **Contract-First Communication:** Uses **kotlinx.rpc** over WebSockets to enforce type-safe service interfaces and
+  eliminate API drift between the server and the consuming client.
+- **Concurrent Execution:** Built on **Ktor 3.5** and structured concurrency, utilizing Kotlin Coroutines and Flows for
+  high-throughput, non-blocking AI operations.
+- **Tech Stack:** Kotlin 2.0, Supabase (PostgreSQL/Auth), Neo4j, Koin (DI), OpenAI, Gemini, Mistral, Cohere (Rerank).
 
-| Task                          | Description                      |
-|-------------------------------|----------------------------------|
-| `./gradlew :server:run`       | Run the server                   |
-| `./gradlew :server:runDocker` | Run using the local docker image |
+## Project Organization
 
-If the server starts successfully, you'll see the following output:
-
-```
-2024-12-04 14:32:45.584 [main] INFO  Application - Application started in 0.303 seconds.
-2024-12-04 14:32:45.682 [main] INFO  Application - Responding at http://0.0.0.0:8080
-```
-
+- `server/`: Primary backend implementation containing AI generation logic, retrieval services, and ingestion pipelines.
+- `core/`: Kotlin Multiplatform (KMP) module housing shared models and RPC service definitions.
+- `mistral/`: Standalone, feature-complete SDK for Mistral AI platform integration.
+- `client/`: Reference Kotlin client for consuming server-side services and content streams.
+- `test-ui/`: Suite for end-to-end verification of generation pipelines.

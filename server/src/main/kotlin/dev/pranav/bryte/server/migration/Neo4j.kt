@@ -15,10 +15,10 @@ import dev.pranav.bryte.server.util.ext.documents
 import dev.pranav.bryte.server.util.ext.supabase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.css.times
 import org.neo4j.driver.AuthTokens
 import org.neo4j.driver.GraphDatabase
 import org.neo4j.driver.Values
+import kotlin.time.Duration.Companion.milliseconds
 
 fun main() {
     val neo4j = Neo4jManager()
@@ -35,26 +35,9 @@ fun main() {
             ), setOf(), chunksRepository
         )
 
-
         println("🚀 Step 1: Ingesting ALL Documents...")
         val allDocs = docsRepository.getAll()
-        println(allDocs.size.toString() + " documents found.")
-//        allDocs.first { it.id == "8479d115-dfd5-4421-b638-b9a1cf978f6c" }.let {
-//            println("Generating embeddings for document: ${it.title} (${it.id})")
-//
-//            val chunks = chunksRepository.getByDocumentId(it.id)
-//
-//            val embedder = TextDocumentEmbedder(LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed), chunks.toSet(), chunksRepository)
-//
-//
-//            for (chunk in chunks) {
-//                if (chunk.embedding == null) {
-//                    println("🔍 Embedding chunk: ${chunk.id} (${chunk.content.take(100)})")
-//                    embedder.embed(chunk.id!!)
-//                }
-//            }
-//        }
-
+        println("${allDocs.size} documents found.")
 
         allDocs.forEach { doc ->
             val docChunks = chunksRepository.getByDocumentId(doc.id)
@@ -62,11 +45,10 @@ fun main() {
             if (docChunks.isNotEmpty()) neo4j.ingestDocument(doc, docChunks)
         }
 
-        // MANDATORY: Wait for the Neo4j background indexer
         println("⏳ Waiting for vector index to process embeddings...")
         var isReady = false
         while (!isReady) {
-            delay(2000)
+            delay(2000.milliseconds)
             isReady = neo4j.checkIndexReady()
         }
 
@@ -75,14 +57,12 @@ fun main() {
             neo4j.interLinkWithDocumentBias(doc.userId)
         }
 
-
         val userQueryEmbedding = embedder.embed("how does the machine understand and act by itself?")
 
-        // 2. Query the graph
+        // Query the graph
         val results = neo4j.searchKnowledgeGraph(userQueryEmbedding.values)
 
         results.forEach { res ->
-            // These keys MUST match the RETURN aliases in the Cypher query above
             val source = res["docSource"]
             val header = res["sectionHeader"]
             val score = res["matchScore"]
@@ -90,7 +70,7 @@ fun main() {
 
             println("Found in [$source]: $header (Score: $score)")
             println("Related Concepts: $related")
-            println("-" * 20)
+            println("-".repeat(20))
         }
     }
     neo4j.close()
@@ -102,36 +82,30 @@ class Neo4jManager {
     )
 
     fun searchKnowledgeGraph(queryEmbedding: List<Double>, topK: Int = 3): List<Map<String, Any>> {
-
         driver.session().use { session ->
             return session.executeRead { tx ->
-                val cypher = $$"""
-    CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $queryEmbedding)
-    YIELD node AS startNode, score
+                val cypher = """
+                    CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $queryEmbedding)
+                    YIELD node AS startNode, score
 
-    MATCH (doc:Document)-[:HAS_PART]->(startNode)
-    OPTIONAL MATCH (startNode)-[r:RELATED_TO]-(neighbor:Chunk)
-    
-    WITH doc, startNode, score, neighbor, r
-    ORDER BY r.weight DESC
+                    MATCH (doc:Document)-[:HAS_PART]->(startNode)
+                    OPTIONAL MATCH (startNode)-[r:RELATED_TO]-(neighbor:Chunk)
+                    
+                    WITH doc, startNode, score, neighbor, r
+                    ORDER BY r.weight DESC
 
-RETURN 
-    coalesce(doc.name, "Unknown") AS docSource,
-    startNode.header AS sectionHeader,
-    startNode.content AS sectionContent,
-    score AS matchScore,
-    collect(DISTINCT {
-        topic: neighbor.header,
-        type: CASE WHEN r.isInternal THEN 'Same Doc' ELSE 'Cross-Doc Bridge' END
-    })[0..3] AS related
-""".trimIndent()
+                    RETURN 
+                        coalesce(doc.name, "Unknown") AS docSource,
+                        startNode.header AS sectionHeader,
+                        startNode.content AS sectionContent,
+                        score AS matchScore,
+                        collect(DISTINCT {
+                            topic: neighbor.header,
+                            type: CASE WHEN r.isInternal THEN 'Same Doc' ELSE 'Cross-Doc Bridge' END
+                        })[0..3] AS related
+                """.trimIndent()
 
-                val params = mapOf(
-                    "queryEmbedding" to queryEmbedding,
-                    "topK" to topK
-                )
-
-                tx.run(cypher, params).list().map { it.asMap() }
+                tx.run(cypher).list().map { it.asMap() }
             }
         }
     }
@@ -150,44 +124,44 @@ RETURN
         driver.session().use { session ->
             return session.executeRead { tx ->
                 val cypher = $$"""
-CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $queryEmbedding)
-YIELD node AS startNode, score AS baseScore
+                    CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $queryEmbedding)
+                    YIELD node AS startNode, score AS baseScore
 
-MATCH (doc:Document)-[:HAS_PART]->(startNode)
-MATCH (:User {id: $userId})-[:OWNS]->(doc)
+                    MATCH (doc:Document)-[:HAS_PART]->(startNode)
+                    MATCH (:User {id: $userId})-[:OWNS]->(doc)
 
-WITH doc, startNode, baseScore,
-     (CASE
-        WHEN $focusDocumentId IS NOT NULL AND doc.id = $focusDocumentId THEN baseScore + $$docBias
-        WHEN $focusDocumentId IS NOT NULL AND doc.id <> $focusDocumentId THEN baseScore - $$crossDocPenalty
-        ELSE baseScore
-     END) AS weightedScore
+                    WITH doc, startNode, baseScore,
+                         (CASE
+                            WHEN $focusDocumentId IS NOT NULL AND doc.id = $focusDocumentId THEN baseScore + $docBias
+                            WHEN $focusDocumentId IS NOT NULL AND doc.id <> $focusDocumentId THEN baseScore - $crossDocPenalty
+                            ELSE baseScore
+                         END) AS weightedScore
 
-OPTIONAL MATCH (startNode)-[r:RELATED_TO]-(neighbor:Chunk)
-WITH doc, startNode, baseScore, weightedScore, neighbor, r
-ORDER BY weightedScore DESC, coalesce(r.weight, 0.0) DESC
+                    OPTIONAL MATCH (startNode)-[r:RELATED_TO]-(neighbor:Chunk)
+                    WITH doc, startNode, baseScore, weightedScore, neighbor, r
+                    ORDER BY weightedScore DESC, coalesce(r.weight, 0.0) DESC
 
-RETURN
-    doc.id AS docId,
-    coalesce(doc.name, doc.title, "Unknown") AS docSource,
-    startNode.id AS chunkId,
-    startNode.header AS sectionHeader,
-    startNode.content AS sectionContent,
-    baseScore AS matchScore,
-    weightedScore AS weightedScore,
-    ($focusDocumentId IS NOT NULL AND doc.id = $focusDocumentId) AS isFocusDoc,
-    collect(DISTINCT {
-        topic: neighbor.header,
-        type: CASE WHEN r.isInternal THEN 'Same Doc' ELSE 'Cross-Doc Bridge' END,
-        weight: coalesce(r.weight, 0.0)
-    })[0..$neighborLimit] AS related
-""".trimIndent()
+                    RETURN
+                        doc.id AS docId,
+                        coalesce(doc.name, doc.title, "Unknown") AS docSource,
+                        startNode.id AS chunkId,
+                        startNode.header AS sectionHeader,
+                        startNode.content AS sectionContent,
+                        baseScore AS matchScore,
+                        weightedScore AS weightedScore,
+                        ($focusDocumentId IS NOT NULL AND doc.id = $focusDocumentId) AS isFocusDoc,
+                        collect(DISTINCT {
+                            topic: neighbor.header,
+                            type: CASE WHEN r.isInternal THEN 'Same Doc' ELSE 'Cross-Doc Bridge' END,
+                            weight: coalesce(r.weight, 0.0)
+                        })[0..$neighborLimit] AS related
+                """.trimIndent()
 
                 val params = mapOf(
                     "queryEmbedding" to queryEmbedding,
                     "topK" to topK,
                     "userId" to userId,
-                    "focusDocumentId" to focusDocumentId,
+                    "focusDocumentId" to (focusDocumentId ?: Values.NULL),
                     "docBias" to docBias,
                     "crossDocPenalty" to crossDocPenalty,
                     "neighborLimit" to neighborLimit
@@ -201,46 +175,34 @@ RETURN
     fun ingestDocument(doc: DocumentItem, chunks: List<DocumentChunk>) {
         driver.session().use { session ->
             session.executeWrite { tx ->
-                // Ensure User and Document exist
                 tx.run(
                     $$"""
-                    MERGE (u:User {id: $userId})
-                    MERGE (d:Document {id: $docId})
-                    ON CREATE SET d.title = $title, d.name = $title
-                    MERGE (u)-[:OWNS]->(d)
-                """.trimIndent(), Values.parameters(
+                        MERGE (u:User {id: $userId})
+                        MERGE (d:Document {id: $docId})
+                        ON CREATE SET d.title = $title, d.name = $title
+                        MERGE (u)-[:OWNS]->(d)
+                    """.trimIndent(), Values.parameters(
                         "userId", doc.userId, "docId", doc.id, "title", doc.title
                     )
                 )
 
-                // Create Chunks
                 chunks.forEach { chunk ->
                     println("   - Ingesting chunk: ${chunk.id} (Pages: ${chunk.pageNumber})")
                     tx.run(
                         $$"""
-                        MATCH (d:Document {id: $docId})
-                        CREATE (c:Chunk {
-                            id: $chunkId,
-                            name: $header,
-                            header: $header,
-                            content: $content,
-                            pages: $pages,
-                            embedding: $embedding
-                        })
-                        MERGE (d)-[:HAS_PART]->(c)
-                    """.trimIndent(), Values.parameters(
-                            "docId",
-                            doc.id,
-                            "chunkId",
-                            chunk.id,
-                            "header",
-                            chunk.header,
-                            "content",
-                            chunk.content,
-                            "pages",
-                            chunk.pageNumber,
-                            "embedding",
-                            chunk.embedding
+                            MATCH (d:Document {id: $docId})
+                            CREATE (c:Chunk {
+                                id: $chunkId,
+                                name: $header,
+                                header: $header,
+                                content: $content,
+                                pages: $pages,
+                                embedding: $embedding
+                            })
+                            MERGE (d)-[:HAS_PART]->(c)
+                        """.trimIndent(), Values.parameters(
+                            "docId", doc.id, "chunkId", chunk.id, "header", chunk.header,
+                            "content", chunk.content, "pages", chunk.pageNumber, "embedding", chunk.embedding
                         )
                     ).consume()
                 }
@@ -256,89 +218,72 @@ RETURN
     ) {
         var isReady = false
         while (!isReady) {
-            delay(2000)
+            delay(2000.milliseconds)
             isReady = checkIndexReady()
         }
 
         driver.session().use { session ->
             session.executeWrite { tx ->
-                val matchClause = if (documentId != null) {
-                    "MATCH (u:User {id: $$userId})-[:OWNS]->(d1:Document {id: $$documentId})-[:HAS_PART]->(c1:Chunk)"
-                } else {
-                    "MATCH (u:User {id: $$userId})-[:OWNS]->(d1:Document)-[:HAS_PART]->(c1:Chunk)"
-                }
-
                 val cypher = """
-                $matchClause
-                
-                CALL {
-                    WITH c1
-                    CALL db.index.vector.queryNodes('chunk_embeddings', 20, c1.embedding)
-                    YIELD node AS c2, score
-                    RETURN c2, score
-                }
-                
-                // Find document of the neighbor
-                MATCH (u:User {id: $userId})-[:OWNS]->(d2:Document)-[:HAS_PART]->(c2)
-                
-                // Calculate Weighted Score: Add bias if in same document
-                WITH c1, c2, score, d1, d2,
-                     (CASE WHEN d1.id = d2.id THEN score + $$bias ELSE score END) AS weightedScore
-                
-                // Filter by the new weighted score
-                WHERE weightedScore >= $$threshold AND c1.id <> c2.id
-                
-                MERGE (c1)-[r:RELATED_TO]->(c2)
-                SET r.weight = weightedScore,
-                    r.isInternal = (d1.id = d2.id),
-                    r.originalSimilarity = score
-            """.trimIndent()
+                    MATCH (u:User {id: "$userId"})-[:OWNS]->(d1:Document)-[:HAS_PART]->(c1:Chunk)
+                    WHERE $documentId IS NULL OR d1.id = $documentId
+                    
+                    CALL {
+                        WITH c1
+                        CALL db.index.vector.queryNodes('chunk_embeddings', 20, c1.embedding)
+                        YIELD node AS c2, score
+                        RETURN c2, score
+                    }
+                    
+                    MATCH (u)-[:OWNS]->(d2:Document)-[:HAS_PART]->(c2)
+                    
+                    WITH c1, c2, score, d1, d2,
+                         (CASE WHEN d1.id = d2.id THEN score + $bias ELSE score END) AS weightedScore
+                    
+                    WHERE weightedScore >= $threshold AND c1.id <> c2.id
+                    
+                    MERGE (c1)-[r:RELATED_TO]->(c2)
+                    SET r.weight = weightedScore,
+                        r.isInternal = (d1.id = d2.id),
+                        r.originalSimilarity = score
+                """.trimIndent()
 
-                val params = mutableMapOf<String, Any>("userId" to userId, "threshold" to threshold, "bias" to bias)
-                if (documentId != null) {
-                    params["documentId"] = documentId
-                }
-
-                tx.run(cypher, params).consume()
+                tx.run(cypher).consume()
             }
         }
     }
 
-    /**
-     * The "Graph Concept": Links isolated chunks into a web.
-     * Fixed the 'neighborDoc' scoping and Null Pointer for embeddings.
-     */
     @Suppress("unused")
     fun interLinkUserChunks(userId: String, threshold: Double = 0.65) {
         driver.session().use { session ->
             session.executeWrite { tx ->
                 val cypher = """
-                // 1. Find all chunks for the user
-                MATCH (u:User {id: $userId})-[:OWNS]->(d:Document)-[:HAS_PART]->(target:Chunk)
-                WHERE target.embedding IS NOT NULL
-                
-                // 2. Search for neighbors (increasing limit to 25 to find potential bridges)
-                CALL {
-                    WITH target
-                    CALL db.index.vector.queryNodes('chunk_embeddings', 25, target.embedding)
-                    YIELD node AS neighbor, score
-                    RETURN neighbor, score
-                }
-                
-                // 3. APPLY THRESHOLD & PREVENT SELF-LINKING
-                WHERE score >= $threshold AND target.id <> neighbor.id
-                
-                // 4. Create the relationship
-                WITH target, neighbor, score
-                MATCH (u:User {id: $userId})-[:OWNS]->(docA:Document)-[:HAS_PART]->(target)
-                MATCH (u)-[:OWNS]->(docB:Document)-[:HAS_PART]->(neighbor)
-                
-                MERGE (target)-[r:RELATED_TO]->(neighbor)
-                SET r.weight = score,
-                    r.isInternal = (docA.id = docB.id)
-            """.trimIndent()
+                    // 1. Find all chunks for the user
+                    MATCH (u:User {id: $userId})-[:OWNS]->(d:Document)-[:HAS_PART]->(target:Chunk)
+                    WHERE target.embedding IS NOT NULL
+                    
+                    // 2. Search for neighbors (increasing limit to 25 to find potential bridges)
+                    CALL {
+                        WITH target
+                        CALL db.index.vector.queryNodes('chunk_embeddings', 25, target.embedding)
+                        YIELD node AS neighbor, score
+                        RETURN neighbor, score
+                    }
+                    
+                    // 3. APPLY THRESHOLD & PREVENT SELF-LINKING
+                    WHERE score >= $threshold AND target.id <> neighbor.id
+                    
+                    // 4. Create the relationship
+                    WITH target, neighbor, score
+                    MATCH (u:User {id: $userId})-[:OWNS]->(docA:Document)-[:HAS_PART]->(target)
+                    MATCH (u)-[:OWNS]->(docB:Document)-[:HAS_PART]->(neighbor)
+                    
+                    MERGE (target)-[r:RELATED_TO]->(neighbor)
+                    SET r.weight = score,
+                        r.isInternal = (docA.id = docB.id)
+                """.trimIndent()
 
-                tx.run(cypher, Values.parameters("userId", userId, "threshold", threshold)).consume()
+                tx.run(cypher).consume()
             }
         }
     }
@@ -348,13 +293,13 @@ RETURN
             session.executeWrite { tx ->
                 tx.run(
                     """
-                CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
-                FOR (c:Chunk) ON (c.embedding)
-                OPTIONS {indexConfig: {
-                 `vector.dimensions`: 1024,
-                 `vector.similarity_function`: 'cosine'
-                }}
-            """.trimIndent()
+                    CREATE VECTOR INDEX chunk_embeddings IF NOT EXISTS
+                    FOR (c:Chunk) ON (c.embedding)
+                    OPTIONS {indexConfig: {
+                     `vector.dimensions`: 1024,
+                     `vector.similarity_function`: 'cosine'
+                    }}
+                """.trimIndent()
                 ).consume()
             }
         }
@@ -387,32 +332,53 @@ RETURN
         return driver.session().use { session ->
             session.executeRead { tx ->
                 val cypher = """
-                    MATCH path = (u:User {id: $$userId})-[:OWNS]->(d:Document {id: $$documentId})-[:HAS_PART]->(start:Chunk)-[:RELATED_TO*0..$$maxHops]-(c:Chunk)
-                    WITH collect(DISTINCT c) AS allNodes
+                // 1. Fetch the User, Document, and its fundamental Chunks
+                MATCH (u:User {id: "$userId"})-[:OWNS]->(d:Document {id: "$documentId"})-[:HAS_PART]->(start:Chunk)
+                WITH d, collect(DISTINCT start) AS documentChunks
+                
+                // 2. Fetch relationships for each chunk optionally so we don't drop isolated nodes
+                UNWIND documentChunks AS node
+                CALL {
+                    WITH node
+                    OPTIONAL MATCH (node)-[r:RELATED_TO]-(neighbor:Chunk)
+                    RETURN r, neighbor 
+                    ORDER BY coalesce(r.weight, 0.0) DESC 
+                    // FIXED: Removed the stray 'Z' typo before variable interpolation
+                    LIMIT $maxLinksPerNode
+                }
+                
+                // 3. Combine document chunks and their neighbors into a unique list of nodes
+                WITH d, documentChunks, collect(DISTINCT node) + collect(DISTINCT neighbor) AS rawNodes, collect(DISTINCT r) AS finalRels
+                UNWIND rawNodes AS n
+                WITH d, finalRels, collect(DISTINCT n) AS chunkNodes
+                
+                // 4. Filter out any null values safely
+                UNWIND chunkNodes AS cn
+                WITH d, finalRels, cn WHERE cn IS NOT NULL
+                WITH d, finalRels, collect(DISTINCT cn) AS uniqueChunkNodes
+                
+                // 5. REMOVE BACKWARD RELATIONS
+                UNWIND finalRels AS rel
+                // FIXED: Chained the startNode/endNode filter cleanly onto the existing WITH clause
+                WITH d, uniqueChunkNodes, rel 
+                WHERE rel IS NOT NULL AND id(startNode(rel)) < id(endNode(rel))
+                WITH d, uniqueChunkNodes, collect(DISTINCT rel) AS uniqueRels
+                
+                // 6. Construct the final optimized payload
+                RETURN 
+                    [{id: d.id, label: coalesce(d.title, d.name, "Document")}] + 
+                    [n IN uniqueChunkNodes | {id: n.id, label: coalesce(n.header, n.name, "Untitled Chunk")}] AS nodes,
                     
-                    UNWIND allNodes AS node
-                    CALL {
-                        WITH node
-                        MATCH (node)-[r:RELATED_TO]-(m:Chunk)
-                        WHERE m IN allNodes
-                        RETURN r ORDER BY r.weight DESC LIMIT $$maxLinksPerNode
-                    }
-                    
-                    WITH allNodes, collect(DISTINCT r) AS finalRels
-                    
-                    RETURN 
-                        [n IN allNodes | {id: n.id, label: n.header}] AS nodes,
-                        [rel IN finalRels | {source: startNode(rel).id, target: endNode(rel).id, weight: rel.weight, isInternal: rel.isInternal}] AS edges
-                """.trimIndent()
+                    [c IN uniqueChunkNodes | {source: d.id, target: c.id, weight: 1.0, isInternal: true}] +
+                    [r IN uniqueRels | {
+                        source: startNode(r).id, 
+                        target: endNode(r).id, 
+                        weight: coalesce(r.weight, 1.0), 
+                        isInternal: coalesce(r.isInternal, true)
+                    }] AS edges
+            """.trimIndent()
 
-                val result = tx.run(
-                    cypher, mapOf(
-                        "userId" to userId,
-                        "documentId" to documentId,
-                        "maxHops" to maxHops,
-                        "maxLinksPerNode" to maxLinksPerNode
-                    )
-                )
+                val result = tx.run(cypher)
 
                 if (result.hasNext()) {
                     result.single().asMap()

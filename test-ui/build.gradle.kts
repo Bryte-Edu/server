@@ -11,6 +11,9 @@ dependencies {
     implementation(project(":client"))
     implementation(project(":core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
+
+    implementation("org.graphstream:gs-core:2.0")
+    implementation("org.graphstream:gs-ui-swing:2.0")
     implementation(kotlin("stdlib-jdk8"))
 }
 repositories {

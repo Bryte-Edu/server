@@ -15,6 +15,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.modelcontextprotocol.kotlin.sdk.types.toJson
 
 
 fun Application.configureSessionRoutes() {
@@ -27,7 +28,7 @@ fun Application.configureSessionRoutes() {
                 try {
                     val graph = Neo4jManager()
                     val result = graph.getGraphVisualization(userId, documentId)
-                    call.respond(HttpStatusCode.OK, result)
+                    call.respond(HttpStatusCode.OK, result.toJson())
                 } catch (e: Exception) {
                     println("GRAPH VIZ EXCEPTION: ${e.message}")
                     e.printStackTrace()
