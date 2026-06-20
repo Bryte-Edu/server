@@ -50,7 +50,6 @@ class YouTube : DocParser<String> {
         )
 
         val doc = response.getOrElse {
-            println("Failed to parse transcript structure: ${it.message}")
             it.printStackTrace()
             return null
         }.data

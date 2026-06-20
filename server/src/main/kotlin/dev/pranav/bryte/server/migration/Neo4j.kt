@@ -1,79 +1,15 @@
 package dev.pranav.bryte.server.migration
 
-import ai.koog.embeddings.local.LLMEmbedder
-import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
-import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
 import dev.pranav.bryte.model.session.DocumentChunk
 import dev.pranav.bryte.model.session.DocumentItem
-import dev.pranav.bryte.server.MISTRAL_API_KEY
 import dev.pranav.bryte.server.NEO4J_PASSWORD
 import dev.pranav.bryte.server.NEO4J_URI
 import dev.pranav.bryte.server.NEO4J_USERNAME
-import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
-import dev.pranav.bryte.server.util.ext.documentChunks
-import dev.pranav.bryte.server.util.ext.documents
-import dev.pranav.bryte.server.util.ext.supabase
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import org.neo4j.driver.AuthTokens
 import org.neo4j.driver.GraphDatabase
 import org.neo4j.driver.Values
 import kotlin.time.Duration.Companion.milliseconds
-
-fun main() {
-    val neo4j = Neo4jManager()
-    val docsRepository by supabase.documents()
-    val chunksRepository by supabase.documentChunks()
-
-    neo4j.setupIndex()
-
-    runBlocking {
-        val embedder = TextDocumentEmbedder(
-            LLMEmbedder(
-                MistralAILLMClient(MISTRAL_API_KEY),
-                MistralAIModels.Embeddings.MistralEmbed
-            ), setOf()
-        )
-
-        println("🚀 Step 1: Ingesting ALL Documents...")
-        val allDocs = docsRepository.getAll()
-        println("${allDocs.size} documents found.")
-
-        allDocs.forEach { doc ->
-            val docChunks = chunksRepository.getByDocumentId(doc.id)
-            println("📄 Ingesting document: ${doc.title} (${doc.id}) with ${docChunks.size} chunks...")
-            if (docChunks.isNotEmpty()) neo4j.ingestDocument(doc, docChunks)
-        }
-
-        println("⏳ Waiting for vector index to process embeddings...")
-        var isReady = false
-        while (!isReady) {
-            delay(2000.milliseconds)
-            isReady = neo4j.checkIndexReady()
-        }
-
-        println("🔗 Step 2: Inter-linking all chunks...")
-        allDocs.forEach { doc ->
-            neo4j.interLinkWithDocumentBias(doc.userId)
-        }
-
-        val userQueryEmbedding = embedder.embed("how does the machine understand and act by itself?")
-
-        val results = neo4j.searchKnowledgeGraph(userQueryEmbedding.values)
-
-        results.forEach { res ->
-            val source = res["docSource"]
-            val header = res["sectionHeader"]
-            val score = res["matchScore"]
-            val related = res["related"]
-
-            println("Found in [$source]: $header (Score: $score)")
-            println("Related Concepts: $related")
-            println("-".repeat(20))
-        }
-    }
-    neo4j.close()
-}
 
 class Neo4jManager {
     private val driver = GraphDatabase.driver(
@@ -190,7 +126,6 @@ class Neo4jManager {
                 )
 
                 chunks.forEach { chunk ->
-                    println("   - Ingesting chunk: ${chunk.id} (Pages: ${chunk.pageNumber})")
                     tx.run(
                         """
                             MATCH (d:Document {id: ${'$'}docId})
@@ -319,7 +254,6 @@ class Neo4jManager {
                 ).consume()
             }
         }
-        println("✅ Vector index 'chunk_embeddings' verified/created.")
     }
 
     fun checkIndexReady(): Boolean {
@@ -330,7 +264,6 @@ class Neo4jManager {
                     val record = result.next()
                     val percent = record.get("populationPercent").asDouble()
                     val state = record.get("state").asString()
-                    println("📊 Index Status: $state ($percent%)")
                     state == "ONLINE" && percent == 100.0
                 } else false
             }

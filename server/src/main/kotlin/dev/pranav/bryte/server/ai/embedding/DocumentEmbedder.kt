@@ -28,8 +28,6 @@ open class TextDocumentEmbedder(
             return@getOrElse try {
                 embedder.embed(text)
             } catch (e: Exception) {
-                println("Failed to embed data: $text")
-                e.printStackTrace()
                 Vector(listOf())
             }
         }
@@ -39,14 +37,12 @@ open class TextDocumentEmbedder(
             it
         }
         if (chunk == null) {
-            println("No document chunk found with id: $id")
             return embedder.embed(text)
         }
 
         val embedding = try {
             embedder.embed(chunk.content)
         } catch (e: Exception) {
-            println("Embedding failed for chunk id: $id, error: ${e.message}")
             Vector(listOf())
         }
 

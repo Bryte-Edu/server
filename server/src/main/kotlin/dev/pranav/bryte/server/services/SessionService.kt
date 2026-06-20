@@ -4,14 +4,14 @@ import dev.pranav.bryte.SessionService
 import dev.pranav.bryte.model.SessionDetails
 import dev.pranav.bryte.model.quiz.Question
 import dev.pranav.bryte.model.session.Session
+import dev.pranav.bryte.model.stats.AnalyticsTimelineRow
 import dev.pranav.bryte.model.stats.FSRSReview
 import dev.pranav.bryte.model.stats.FSRSState
 import dev.pranav.bryte.model.stats.TopicAnalytics
-import dev.pranav.bryte.model.stats.AnalyticsTimelineRow
 import dev.pranav.bryte.server.ai.QuestionGenerator
+import dev.pranav.bryte.server.postgrest.analyticsTimeline
 import dev.pranav.bryte.server.postgrest.fsrsStates
 import dev.pranav.bryte.server.postgrest.topicAnalytics
-import dev.pranav.bryte.server.postgrest.analyticsTimeline
 import dev.pranav.bryte.server.util.SpacedRepetitionScheduler
 import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.questions
@@ -38,7 +38,6 @@ class SessionServiceImpl(val session: Session) : SessionService {
     }
 
     override suspend fun details(): SessionDetails {
-        System.err.println("Session service for session ${session.id}")
 
         return SessionDetails(
             sessionId = session.id,

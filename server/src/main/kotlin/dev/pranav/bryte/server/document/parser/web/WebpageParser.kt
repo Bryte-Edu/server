@@ -32,7 +32,6 @@ class WebpageParser : DocParser<String> {
         val htmlContent = try {
             client.get(input).bodyAsText()
         } catch (e: Exception) {
-            println("Failed to fetch webpage content: ${e.message}")
             return null
         } finally {
             client.close()
@@ -73,7 +72,6 @@ class WebpageParser : DocParser<String> {
         )
 
         val doc = response.getOrElse {
-            println("Failed to parse webpage structure: ${it.message}")
             it.printStackTrace()
             return null
         }.data

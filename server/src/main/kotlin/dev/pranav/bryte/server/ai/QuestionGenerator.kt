@@ -4,7 +4,6 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
-import ai.koog.agents.core.feature.handler.agent.AgentStartingContext
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
@@ -228,11 +227,6 @@ class QuestionGenerator(
         if (!::generationAgent.isInitialized) {
             createAgent(toolset)
         }
-//
-//        while (generationAgent.agentConfig.) {
-//            delay(500)
-//            println("Waiting for previous generation to complete...")
-//        }
 
         val markdownStream = generationAgent.run("Generate unique questions based on the content")
         return parseMDStreamToQuestions(markdownStream, toolset)
@@ -358,21 +352,7 @@ class QuestionGenerator(
                 tools(toolset)
             },
             installFeatures = {
-                install(EventHandler) {
-                    onAgentStarting { eventContext: AgentStartingContext ->
-                        println("Starting agent: ${eventContext.agent.id}")
-                    }
-                    onToolCallStarting {
-                        println("Tool call started: ${it.toolName}")
-                    }
-
-                    onToolCallCompleted {
-                        if (it.toolName == "contentExhausted") {
-                            exhausted = true
-                            println("Exhaustion tool called. Ending question generation.")
-                        }
-                    }
-                }
+                install(EventHandler)
             })
     }
 

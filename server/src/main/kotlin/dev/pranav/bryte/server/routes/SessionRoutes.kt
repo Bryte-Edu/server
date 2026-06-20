@@ -30,7 +30,6 @@ fun Application.configureSessionRoutes() {
                     val result = graph.getGraphVisualization(userId, documentId)
                     call.respond(HttpStatusCode.OK, result.toJson())
                 } catch (e: Exception) {
-                    println("GRAPH VIZ EXCEPTION: ${e.message}")
                     e.printStackTrace()
                     throw ExternalServiceException("Failed to fetch graph visualization: ${e.message}")
                 }
@@ -82,7 +81,6 @@ fun Application.configureSessionRoutes() {
                     val embedding = try {
                         embedder.embed(topic.content).values
                     } catch (e: Exception) {
-                        println("EMBEDDING EXCEPTION: ${e.message}")
                         e.printStackTrace()
                         throw ExternalServiceException("Failed to generate embeddings: ${e.message}")
                     }
@@ -108,7 +106,6 @@ fun Application.configureSessionRoutes() {
                     graph.ingestDocument(documentItem, chunks)
                     graph.interLinkWithDocumentBias(documentItem.userId)
                 } catch (e: Exception) {
-                    println("GRAPH INGESTION EXCEPTION: ${e.message}")
                     e.printStackTrace()
                     throw ExternalServiceException("Failed to index document graph: ${e.message}")
                 }

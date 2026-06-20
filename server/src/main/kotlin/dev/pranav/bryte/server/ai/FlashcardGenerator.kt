@@ -8,7 +8,6 @@ import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
-import ai.koog.agents.core.feature.handler.agent.AgentStartingContext
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
@@ -164,7 +163,6 @@ class FlashcardGenerator(
                     .topN(5)
                     .build()
             )
-            println("Rerank response: $rerankResponse")
             return rerankResponse.results.map { it.document.get().text }.joinToString("\n")
             //return graphContext(query = query, topK = graphRagConfig.topK, neighborLimit = graphRagConfig.neighborLimit)
         }
@@ -345,39 +343,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                 tools(toolset)
             },
             installFeatures = {
-                install(EventHandler) {
-                    onAgentStarting { eventContext: AgentStartingContext ->
-                        println("Starting agent: ${eventContext.agent.id}")
-                    }
-
-                    onLLMStreamingStarting {
-                        println("LLM streaming starting...")
-                    }
-
-                    onLLMStreamingFrameReceived {
-                        if (it.streamFrame is StreamFrame.TextDelta) {
-                            print((it.streamFrame as StreamFrame.TextDelta).text)
-                        } else {
-                            println(it.streamFrame.toString())
-                        }
-                    }
-
-                    onLLMCallStarting {
-                        println("LLM call starting...")
-                    }
-
-                    onLLMCallCompleted {
-                        println("LLM call completed.")
-                    }
-
-                    onLLMStreamingFailed {
-                        println("LLM streaming failed: ${it.error.message}")
-                    }
-
-                    onToolCallCompleted {
-                        println("Tool call completed: ${it.toolName} with result: ${it.toolResult}")
-                    }
-                }
+                install(EventHandler)
             })
     }
 
@@ -525,11 +491,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         emit(flashcard)
                         coroutineScope {
                             launch(Dispatchers.IO) {
-                                try {
-                                    flashcards.insert(flashcard)
-                                } catch (e: Exception) {
-                                    println("Failed to insert flashcard to DB: ${e.message}")
-                                }
+                                flashcards.insert(flashcard)
                             }
                         }
 
@@ -585,15 +547,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         )
 
                         emit(flashcard)
-                        coroutineScope {
-                            launch(Dispatchers.IO) {
-                                try {
-                                    flashcards.insert(flashcard)
-                                } catch (e: Exception) {
-                                    println("Failed to insert flashcard to DB: ${e.message}")
-                                }
-                            }
-                        }
+                        flashcards.insert(flashcard)
                     }
                 }
 

@@ -35,7 +35,6 @@ object YouTubeService {
                     response.responseBody()
 
                 } catch (e: Exception) {
-                    println("Error fetching subtitle content: ${e.message}")
                     e.printStackTrace()
                     null
                 }
@@ -52,7 +51,7 @@ object YouTubeService {
         }
     }
 
-    suspend fun getTranscript(videoId: String): String {
+    fun getTranscript(videoId: String): String {
         ServiceList.YouTube.getStreamExtractor(videoId).let {
             it.fetchPage()
             val subtitle = runCatching {
@@ -78,7 +77,6 @@ object YouTubeService {
                     response.responseBody()
 
                 } catch (e: Exception) {
-                    println("Error fetching subtitle content: ${e.message}")
                     e.printStackTrace()
                     null
                 }
@@ -88,7 +86,7 @@ object YouTubeService {
         return ""
     }
 
-    suspend fun getVideoDetails(videoId: String): VideoDetails {
+    fun getVideoDetails(videoId: String): VideoDetails {
         ServiceList.YouTube.getStreamExtractor(videoId).let {
             it.fetchPage()
 
@@ -144,7 +142,7 @@ private fun String.decodeHtmlEntities(): String {
         // Parse the value as a Unicode code point
         val charCode = try {
             if (isHex) value.toInt(16) else value.toInt()
-        } catch (e: NumberFormatException) {
+        } catch (_: NumberFormatException) {
             return@replace match.value
         }
 

@@ -11,7 +11,7 @@ class ParserExtensionsTest {
     @Test
     fun testUnsupportedDocumentTypeThrowsBadRequest() {
         assertFailsWith<BadRequestException> {
-            getDocumentParser(DocumentType.WEBPAGE)
+            getDocumentParser(DocumentType.EPUB)
         }
     }
 }
