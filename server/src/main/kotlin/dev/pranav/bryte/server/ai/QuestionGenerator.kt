@@ -35,40 +35,7 @@ import dev.pranav.bryte.server.postgrest.TopicAnalyticsRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.runBlocking
 
-
-//suspend fun main() = runBlocking {
-////    val sessions by supabase.sessions()
-////    val documentChunks by supabase.documentChunks()
-////    val generator = QuestionGenerator(sessions.getById("ef265311-2207-41b2-a59b-452c9f119c98")!!, documentChunks)
-////    generator.generateQuestions().let {
-////        println("Generated questions")
-////
-////        it.collect {
-////            println(it)
-////        }
-////
-////        println()
-////        println("First batch complete")
-////
-////    }
-//
-//    val service = AIAgentService(
-//        promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
-//        agentConfig = AIAgentConfig(
-//            prompt = Prompt.build("Test Prompt") {
-//                system("You are a helpful assistant.")
-//            }, model = GoogleModels.Gemini2_5Flash, maxAgentIterations = 5
-//        ),
-//        singleRunStrategy()
-//    )
-//
-//    val agent = service.createAgent()
-//    println(agent.run("Hello Jon"))
-//    println(agent.run("What was my last message?"))
-//
-//}
 
 /**
  * AI-powered question generator that creates questions from document chunks.
@@ -102,8 +69,7 @@ class QuestionGenerator(
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
             LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed),
-            documentTopics,
-            documentChunks
+            documentTopics
         )
     }
 
@@ -111,29 +77,35 @@ class QuestionGenerator(
         InMemoryDocumentEmbeddingStorage(embedder)
     }
 
-    private val documentTopics: Set<DocumentChunk>
+    private var documentTopics: List<DocumentChunk> = emptyList()
+    private var initializedTopics = false
 
 
     init {
         require(session.id.isNotBlank()) { "Session ID must not be blank" }
+    }
 
-        documentTopics = runBlocking {
-            var topics = documentChunks.getByDocumentId(session.documentId).toList()
-            if (topicAnalyticsRepo != null) {
-                // Fetch stats for all topics and sort by readiness (lowest readiness first)
-                val stats = topics.map { it.id to topicAnalyticsRepo.getByTopicId(it.id!!) }
-                val scoreMap = stats.associate { it.first to (it.second?.readinessScore ?: Double.MAX_VALUE) }
-                topics = topics.sortedBy { scoreMap[it.id] ?: Double.MAX_VALUE }
-            } else {
-                topics = topics.sortedBy { it.index }
-            }
-            topics.toSet()
+    private suspend fun ensureInitialized() {
+        if (initializedTopics) return
+
+        var topics = documentChunks.getByDocumentId(session.documentId).toList()
+
+        topics = if (topicAnalyticsRepo != null) {
+            val stats = topics.map { it.id to topicAnalyticsRepo.getByTopicId(it.id!!) }
+            val scoreMap = stats.associate { it.first to (it.second?.readinessScore ?: Double.MAX_VALUE) }
+            topics.sortedBy { scoreMap[it.id] ?: Double.MAX_VALUE }
+        } else {
+            topics.sortedBy { it.index }
         }
 
-        runBlocking {
-            documentStorage.add(documentTopics.filter { it.content.length > 200 }.mapNotNull { it.id })
+        documentTopics = topics
+
+        if (!initializedTopics) {
+            documentStorage.add(topics.filter { it.content.length > 200 }.mapNotNull { it.id })
+            initializedTopics = true
         }
     }
+
 
     @Suppress("unused")
     @LLMDescription("Tools for retrieving document topics and searching content.")
@@ -147,7 +119,7 @@ class QuestionGenerator(
         @Tool
         @LLMDescription("Returns the next topic content from document.")
         fun getNextTopic(): String {
-            if (index >= documentTopics.size) {
+            if (documentTopics.isEmpty() || index >= documentTopics.size) {
                 return "No more topics available."
             }
             val topic = documentTopics.elementAt(index)
@@ -234,19 +206,6 @@ class QuestionGenerator(
             }
             return documentTopics.map { it.header }.distinct().joinToString()
         }
-//
-//        @Tool
-//        @LLMDescription("Get content for a specific topic. Prefer getNextTopic for sequential access.")
-//        fun getTopicByTitle(
-//            @LLMDescription("The title of the topic to retrieve content for.") title: String
-//        ): String {
-//            val topic = documentTopics.find { it.header.equals(title, ignoreCase = true) }
-//                ?: return "Topic with title '$title' not found."
-//            return markdown {
-//                h1(topic.header)
-//                text(topic.content)
-//            }
-//        }
 
         @Tool
         @LLMDescription("Call this tool ONLY when you determine that the *entire document* has been processed and you can no longer generate meaningful, high-quality, deep-thinking questions from the remaining content. This signals the **absolute end** of the question generation task.")
@@ -263,6 +222,7 @@ class QuestionGenerator(
      * @return List of generated Question objects
      */
     suspend fun generateQuestions(): Flow<Question> {
+        ensureInitialized()
         val toolset = RAGToolset()
 
         if (!::generationAgent.isInitialized) {
@@ -281,15 +241,14 @@ class QuestionGenerator(
     /**
      * Generates questions for a single document chunk.
      *
-     * @param sessionId The session ID for the questions
      * @param chunk The document chunk to generate questions from
      *
      * @return List of generated Question objects for this chunk
      */
     suspend fun generateQuestionsForChunk(
-        sessionId: String, chunk: DocumentChunk
+        chunk: DocumentChunk
     ): List<Question> {
-
+        ensureInitialized()
         val questions = mutableListOf<Question>()
         val toolset = RAGToolset()
         toolset.index = documentTopics.indexOf(chunk)
@@ -333,7 +292,7 @@ class QuestionGenerator(
             edge(returnStream forwardTo nodeFinish)
         }
 
-        val agent = AIAgent<String, Flow<StreamFrame>>(
+        val agent = AIAgent(
             promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
             agentConfig = agentConfig,
             strategy = strategy,
@@ -391,7 +350,7 @@ class QuestionGenerator(
             edge(returnStream forwardTo nodeFinish)
         }
 
-        generationAgent = AIAgent<String, Flow<StreamFrame>>(
+        generationAgent = AIAgent(
             promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
             agentConfig = agentConfig,
             strategy = agentStrategy,
@@ -431,8 +390,6 @@ class QuestionGenerator(
 
                 onHeader(4) { headerText ->
                     if (headerText.isEmpty()) return@onHeader
-
-                    println("Question type: $headerText")
 
                     if (type.isEmpty()) {
                         type = headerText

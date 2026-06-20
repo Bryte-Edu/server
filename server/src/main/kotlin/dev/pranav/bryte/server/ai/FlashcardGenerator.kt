@@ -43,10 +43,6 @@ import dev.pranav.bryte.server.ai.embedding.TextDocumentEmbedder
 import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.FlashcardRepository
-import dev.pranav.bryte.server.util.ext.documentChunks
-import dev.pranav.bryte.server.util.ext.flashcards
-import dev.pranav.bryte.server.util.ext.sessions
-import dev.pranav.bryte.server.util.ext.supabase
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -54,26 +50,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
-
-fun main() = runBlocking {
-    val sessions by supabase.sessions()
-    val documentChunks by supabase.documentChunks()
-    val flashcards by supabase.flashcards()
-    val generator =
-        FlashcardGenerator(sessions.getById("df5815b3-0ece-44c9-8bba-7753b704745f")!!, documentChunks, flashcards)
-
-    generator.use {
-        println("Starting flashcard generation cycle...")
-        it.generateFlashcards().let { flow ->
-            var count = 0
-            flow.collect { card ->
-                println(card)
-                count++
-            }
-            println("Generated $count flashcards in this cycle.")
-        }
-    }
-}
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * AI-powered question generator that creates questions from document chunks.
@@ -96,8 +73,6 @@ class FlashcardGenerator(
         val crossDocPenalty: Double = 0.05
     )
 
-    private val graphRagConfig = GraphRagConfig()
-
     override fun close() {
         neo4j.close()
     }
@@ -105,8 +80,7 @@ class FlashcardGenerator(
     private val embedder: TextDocumentEmbedder by lazy {
         TextDocumentEmbedder(
             LLMEmbedder(MistralAILLMClient(MISTRAL_API_KEY), MistralAIModels.Embeddings.MistralEmbed),
-            documentTopics,
-            documentChunks
+            documentTopics
         )
     }
 
@@ -114,20 +88,32 @@ class FlashcardGenerator(
         InMemoryDocumentEmbeddingStorage(embedder)
     }
 
-    private val documentTopics: Set<DocumentChunk>
+    private var documentTopics: List<DocumentChunk> = emptyList()
+    private var prepared = false
 
 
     init {
         require(session.id.isNotBlank()) { "Session ID must not be blank" }
-
-        documentTopics = runBlocking {
-            documentChunks.getByDocumentId(session.documentId).toSet().sortedBy { it.index }.toSet()
-        }
-
-        runBlocking {
-            documentStorage.add(documentTopics.filter { it.content.length > 200 }.map { it.id!! }.toList())
-        }
     }
+
+    private suspend fun ensureInitialized() {
+        if (prepared) return
+
+        require(session.id.isNotBlank()) { "Session ID must not be blank" }
+
+        documentTopics = documentChunks
+            .getByDocumentId(session.documentId)
+            .sortedBy { it.index }
+
+        documentStorage.add(
+            documentTopics
+                .filter { it.content.length > 200 }
+                .map { it.id!! }
+        )
+
+        prepared = true
+    }
+
 
     @Suppress("unused")
     @LLMDescription("Tools for retrieving document topics and searching content.")
@@ -162,7 +148,7 @@ class FlashcardGenerator(
 
         @Tool
         @LLMDescription("Search for related information about the given query. Prioritizes the current document but can bridge across the user's other documents when useful.")
-        suspend fun search(
+        fun search(
             @LLMDescription("The query to search for related information.") query: String
         ): String {
             val cohere = Cohere.builder()
@@ -271,6 +257,7 @@ class FlashcardGenerator(
     private lateinit var generationAgent: AIAgent<String, Flow<StreamFrame>>
 
     suspend fun generateFlashcards(): Flow<Flashcard> {
+        ensureInitialized()
         val toolset = DocumentToolset()
 
         val existingCards = flashcards.getByDocumentId(session.documentId)
@@ -425,8 +412,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                         requestLLMStreaming(structure)
                     } catch (e: LLMClientException) {
                         if (e.cause!!.message!!.contains("Please retry after")) {
-                            println("Rate limit hit, sleeping for 20 seconds before retrying...")
-                            Thread.sleep(20_000)
+                            delay(20.seconds)
                             requestLLMStreaming(structure)
                         } else {
                             throw e

@@ -33,7 +33,6 @@ dependencies {
 
     implementation("com.github.teamnewpipe:NewPipeExtractor:0.26.2")
 
-    implementation("com.openai:openai-java:4.37.0")
     implementation("com.cohere:cohere-java:1.10.1")
 
     implementation("io.github.flaxoos:ktor-server-rate-limiting:2.3.0")
