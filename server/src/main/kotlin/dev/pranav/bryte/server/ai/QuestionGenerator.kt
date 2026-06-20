@@ -32,9 +32,11 @@ import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.QuestionRepository
 import dev.pranav.bryte.server.postgrest.TopicAnalyticsRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
+import io.ktor.util.logging.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+internal val GENERATOR_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.ai.QuestionGenerator")
 
 /**
  * AI-powered question generator that creates questions from document chunks.
@@ -145,6 +147,8 @@ class QuestionGenerator(
             @LLMDescription("Max number of related concepts to include per chunk.") neighborLimit: Int = 5
         ): String {
             if (query.isBlank()) return "Query is blank."
+
+            GENERATOR_LOGGER.info("Executing Graph RAG query: '$query'")
 
             val queryEmbedding = embedder.embed(query).values
             if (queryEmbedding.isEmpty()) return "No embedding produced for query."

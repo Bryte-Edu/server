@@ -19,6 +19,8 @@ fun Application.configureRpcRoutes() {
     routing {
         authenticate("auth-jwt") {
             rpc("/api/rpc/{sessionId}") {
+                val sessionIdParam = call.parameters["sessionId"]?.trim().orEmpty()
+                call.application.environment.log.info("Incoming RPC connection for Question session: $sessionIdParam")
                 rpcConfig {
                     serialization {
                         json()
@@ -46,6 +48,8 @@ fun Application.configureRpcRoutes() {
             }
 
             rpc("/api/rpc/flashcards/{sessionId}") {
+                val sessionIdParam = call.parameters["sessionId"]?.trim().orEmpty()
+                call.application.environment.log.info("Incoming RPC connection for Flashcard session: $sessionIdParam")
                 rpcConfig {
                     serialization {
                         json()

@@ -27,6 +27,13 @@ class FlashcardRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeSingleOrNull()
     }
 
+    suspend fun getByIds(ids: List<String>): List<Flashcard> {
+        if (ids.isEmpty()) return emptyList()
+        return postgrest.select {
+            filter { isIn("id", ids) }
+        }.decodeList()
+    }
+
     suspend fun insert(flashcard: Flashcard): Flashcard? {
         return postgrest.insert(flashcard) {
             select()

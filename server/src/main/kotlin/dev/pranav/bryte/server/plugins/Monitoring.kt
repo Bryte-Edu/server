@@ -13,6 +13,7 @@ import io.ktor.server.response.*
 import org.slf4j.event.Level
 
 fun Application.configureMonitoring() {
+    install(RequestTracePlugin)
     install(KHealth)
     install(StatusPages) {
         exception<ApiException> { call, cause ->

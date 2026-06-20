@@ -16,9 +16,12 @@ import dev.pranav.bryte.server.util.SpacedRepetitionScheduler
 import dev.pranav.bryte.server.util.ext.documentChunks
 import dev.pranav.bryte.server.util.ext.questions
 import dev.pranav.bryte.server.util.ext.supabase
+import io.ktor.util.logging.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlin.time.Clock
+
+internal val LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.services.SessionService")
 
 class SessionServiceImpl(val session: Session) : SessionService {
 
@@ -59,15 +62,21 @@ class SessionServiceImpl(val session: Session) : SessionService {
 
         val overdueStates = fsrsRepo.getOverdue(session.id, Clock.System.now().toString())
         if (overdueStates.isNotEmpty()) {
+            LOGGER.info("Found ${overdueStates.size} overdue FSRS questions for session ${session.id}. Emitting first.")
             val overdueIds = overdueStates.map { it.questionId }
             val overdueQuestions = questionsRepo.getByIds(overdueIds)
             for (q in overdueQuestions) {
                 emit(q)
             }
+        } else {
+            LOGGER.info("No overdue questions found for session ${session.id}.")
         }
 
         if (!generator.exhausted) {
+            LOGGER.info("Falling back to generator for new questions.")
           generator.generateQuestions().collect { emit(it) }
+        } else {
+            LOGGER.info("Generator exhausted. No more questions.")
         }
     }
 
@@ -77,70 +86,7 @@ class SessionServiceImpl(val session: Session) : SessionService {
     }
 
     override suspend fun getSessionAnalytics(): dev.pranav.bryte.model.stats.SessionAnalytics {
-        val topicAnalyticsRepo by supabase.topicAnalytics()
-        val topics = topicAnalyticsRepo.getBySessionId(session.id)
-
-        val fsrsRepo by supabase.fsrsStates()
-        val fsrsStates = fsrsRepo.getBySessionId(session.id).filter { it.reps > 0 }
-
-        val totalTopicsLearned = topics.size
-        val averageReadiness = if (totalTopicsLearned > 0) {
-            topics.map { it.readinessScore }.average()
-        } else {
-            0.0
-        }
-        val completedReviews = fsrsStates.sumOf { it.reps }
-
-        // Average time spent
-        val responseTime = if (topics.isNotEmpty()) topics.map { it.avgTimeSpentSeconds }.average() else 0.0
-
-        // Compute accuracy based on current state (Review state = 2 means currently known, 1/3 means struggling)
-        val totalAttempted = fsrsStates.size
-        val currentlyKnown = fsrsStates.count { it.state == 2 }
-        val accuracy = if (totalAttempted > 0) (currentlyKnown.toDouble() / totalAttempted) * 100.0 else 0.0
-
-        // Overall performance: a mix of average readiness and accuracy, giving more weight to recent actuals via FSRS stability scaling
-        val avgStability = if (fsrsStates.isNotEmpty()) fsrsStates.map { it.stability }.average() else 0.0
-        val overallPerformance =
-            if (totalAttempted > 0) (averageReadiness + accuracy + (avgStability * 10).coerceAtMost(100.0)) / 3.0 else 0.0
-
-        // Consistency: inversely related to lapses vs reps
-        val totalLapses = fsrsStates.sumOf { it.lapses }
-        val consistency = if (completedReviews > 0) {
-            val lapseRate = totalLapses.toDouble() / completedReviews
-            ((1.0 - lapseRate) * 100.0).coerceIn(0.0, 100.0)
-        } else 0.0
-
-        // Recommendations dynamically computed based on FSRS state
-        val recommendations = mutableListOf<String>()
-        val strugglingTopics = fsrsStates.filter { it.state == 1 || it.state == 3 || it.difficulty > 7.0 }
-            .groupBy { it.topicId }
-            .mapValues { it.value.size }
-            .entries.sortedByDescending { it.value }
-            .take(2)
-
-        if (strugglingTopics.isNotEmpty()) {
-            recommendations.add("Consider reviewing the top ${strugglingTopics.size} topics where you recently had lapses or high difficulty.")
-        }
-        if (accuracy < 70 && totalAttempted > 5) {
-            recommendations.add("Your current accuracy is dipping. Try shorter study spaces within this session.")
-        } else if (accuracy > 90) {
-            recommendations.add("Great retention! You are ready to space out these topics further or move to new material.")
-        }
-
-        return dev.pranav.bryte.model.stats.SessionAnalytics(
-            sessionId = session.id,
-            averageReadiness = averageReadiness,
-            totalTopicsLearned = totalTopicsLearned,
-            completedReviews = completedReviews,
-            topics = topics,
-            accuracy = accuracy,
-            totalAttempted = totalAttempted,
-            overallPerformance = overallPerformance,
-            consistency = consistency,
-            responseTime = responseTime,
-            recommendations = recommendations
-        )
+        return calculateSessionAnalytics(session.id)
     }
 
     override suspend fun submitReview(review: FSRSReview): FSRSState {
@@ -161,6 +107,7 @@ class SessionServiceImpl(val session: Session) : SessionService {
             questionId = questionId,
             topicId = question.chunkId
         )
+        LOGGER.info("Calculated new FSRS state for question $questionId: stability=${nextState.stability}, difficulty=${nextState.difficulty}, scheduled for ${nextState.nextReview}")
 
         // Save state
         val savedState = fsrsRepo.upsert(nextState) ?: throw IllegalStateException("Failed to save FSRS state")
@@ -195,4 +142,71 @@ class SessionServiceImpl(val session: Session) : SessionService {
         val timelineRepo by supabase.analyticsTimeline()
         return timelineRepo.getBySession(session.id)
     }
+}
+
+suspend fun calculateSessionAnalytics(sessionId: String): dev.pranav.bryte.model.stats.SessionAnalytics {
+    val topicAnalyticsRepo by supabase.topicAnalytics()
+    val topics = topicAnalyticsRepo.getBySessionId(sessionId)
+
+    val fsrsRepo by supabase.fsrsStates()
+    val fsrsStates = fsrsRepo.getBySessionId(sessionId).filter { it.reps > 0 }
+
+    val totalTopicsLearned = topics.size
+    val averageReadiness = if (totalTopicsLearned > 0) {
+        topics.map { it.readinessScore }.average()
+    } else {
+        0.0
+    }
+    val completedReviews = fsrsStates.sumOf { it.reps }
+
+    // Average time spent
+    val responseTime = if (topics.isNotEmpty()) topics.map { it.avgTimeSpentSeconds }.average() else 0.0
+
+    // Compute accuracy based on current state (Review state = 2 means currently known, 1/3 means struggling)
+    val totalAttempted = fsrsStates.size
+    val currentlyKnown = fsrsStates.count { it.state == 2 }
+    val accuracy = if (totalAttempted > 0) (currentlyKnown.toDouble() / totalAttempted) * 100.0 else 0.0
+
+    // Overall performance: a mix of average readiness and accuracy, giving more weight to recent actuals via FSRS stability scaling
+    val avgStability = if (fsrsStates.isNotEmpty()) fsrsStates.map { it.stability }.average() else 0.0
+    val overallPerformance =
+        if (totalAttempted > 0) (averageReadiness + accuracy + (avgStability * 10).coerceAtMost(100.0)) / 3.0 else 0.0
+
+    // Consistency: inversely related to lapses vs reps
+    val totalLapses = fsrsStates.sumOf { it.lapses }
+    val consistency = if (completedReviews > 0) {
+        val lapseRate = totalLapses.toDouble() / completedReviews
+        ((1.0 - lapseRate) * 100.0).coerceIn(0.0, 100.0)
+    } else 0.0
+
+    // Recommendations dynamically computed based on FSRS state
+    val recommendations = mutableListOf<String>()
+    val strugglingTopics = fsrsStates.filter { it.state == 1 || it.state == 3 || it.difficulty > 7.0 }
+        .groupBy { it.topicId }
+        .mapValues { it.value.size }
+        .entries.sortedByDescending { it.value }
+        .take(2)
+
+    if (strugglingTopics.isNotEmpty()) {
+        recommendations.add("Consider reviewing the top ${strugglingTopics.size} topics where you recently had lapses or high difficulty.")
+    }
+    if (accuracy < 70 && totalAttempted > 5) {
+        recommendations.add("Your current accuracy is dipping. Try shorter study spaces within this session.")
+    } else if (accuracy > 90) {
+        recommendations.add("Great retention! You are ready to space out these topics further or move to new material.")
+    }
+
+    return dev.pranav.bryte.model.stats.SessionAnalytics(
+        sessionId = sessionId,
+        averageReadiness = averageReadiness,
+        totalTopicsLearned = totalTopicsLearned,
+        completedReviews = completedReviews,
+        topics = topics,
+        accuracy = accuracy,
+        totalAttempted = totalAttempted,
+        overallPerformance = overallPerformance,
+        consistency = consistency,
+        responseTime = responseTime,
+        recommendations = recommendations
+    )
 }

@@ -2,10 +2,13 @@ package dev.pranav.bryte.server.util
 
 import dev.pranav.bryte.model.stats.FSRSState
 import dev.pranav.bryte.model.stats.TopicAnalytics
+import io.ktor.util.logging.*
 import kotlin.math.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
+
+internal val FSRS_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.util.SpacedRepetitionScheduler")
 
 object SpacedRepetitionScheduler {
 
@@ -21,6 +24,7 @@ object SpacedRepetitionScheduler {
     }
 
     fun calculateNextState(currentState: FSRSState?, grade: Int): FSRSState {
+        FSRS_LOGGER.info("FSRS calculateNextState: grade=$grade, isNew=${currentState == null}, currentStability=${currentState?.stability ?: "N/A"}, currentDifficulty=${currentState?.difficulty ?: "N/A"}")
         val now = Clock.System.now()
         val s = currentState ?: FSRSState(
             userId = "",
@@ -74,6 +78,7 @@ object SpacedRepetitionScheduler {
 
         val intervalDays = max(1, (newStability * 9 * (1.0 / 0.9 - 1)).roundToInt())
         val nextReviewTime = now.plus(intervalDays.days)
+        FSRS_LOGGER.info("FSRS result: newState=${if (grade == 1) "Relearning" else "Review"}, stability=$newStability, difficulty=$newDifficulty, interval=${intervalDays}d, lapses=$newLapses")
 
         return FSRSState(
             id = s.id,

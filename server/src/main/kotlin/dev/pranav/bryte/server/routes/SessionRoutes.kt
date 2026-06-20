@@ -22,6 +22,7 @@ fun Application.configureSessionRoutes() {
     routing {
         authenticate("auth-jwt") {
             get("/api/graph/{documentId}") {
+                call.application.environment.log.info("Fetching graph visualization for document: ${call.parameters["documentId"]}")
                 val userId by call.userId()
                 val documentId = call.parameters["documentId"] ?: throw BadRequestException("documentId is required")
 
@@ -36,6 +37,7 @@ fun Application.configureSessionRoutes() {
             }
 
             post("/api/create-session") {
+                call.application.environment.log.info("Starting new session creation. Receiving document payload...")
                 val userId by call.userId()
                 val sessions by supabase.sessions()
                 val documents by supabase.documents()
@@ -46,6 +48,7 @@ fun Application.configureSessionRoutes() {
                     throw BadRequestException("source cannot be blank")
                 }
 
+                call.application.environment.log.info("Parsing document of type: ${request.docType}")
                 val parser = getDocumentParser(request.docType)
 
                 val parsed = parser.parseDocument(request.source)
@@ -54,6 +57,8 @@ fun Application.configureSessionRoutes() {
                 if (parsed.topics.isEmpty()) {
                     throw BadRequestException("No content found in document")
                 }
+
+                call.application.environment.log.info("Successfully parsed document into ${parsed.topics.size} topics.")
 
                 val documentItem = documents.insert(
                     DocumentItem(
@@ -99,17 +104,21 @@ fun Application.configureSessionRoutes() {
                     throw ExternalServiceException("Failed to create document chunks")
                 }
 
+                call.application.environment.log.info("Generated embeddings for ${chunksList.size} chunks. Saving to database...")
                 val chunks = documentChunks.insert(chunksList)
 
                 try {
+                    call.application.environment.log.info("Ingesting document chunks into Neo4j graph...")
                     val graph = Neo4jManager()
                     graph.ingestDocument(documentItem, chunks)
+                    call.application.environment.log.info("Interlinking document nodes with bias...")
                     graph.interLinkWithDocumentBias(documentItem.userId)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     throw ExternalServiceException("Failed to index document graph: ${e.message}")
                 }
 
+                call.application.environment.log.info("Creating session record in database...")
                 val session = sessions.insert(
                     Session(
                         userId = userId,

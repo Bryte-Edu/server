@@ -43,6 +43,7 @@ import dev.pranav.bryte.server.migration.Neo4jManager
 import dev.pranav.bryte.server.postgrest.DocumentChunkRepository
 import dev.pranav.bryte.server.postgrest.FlashcardRepository
 import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
+import io.ktor.util.logging.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -50,6 +51,8 @@ import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlin.time.Duration.Companion.seconds
+
+internal val FC_GEN_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.ai.FlashcardGenerator")
 
 /**
  * AI-powered question generator that creates questions from document chunks.
@@ -100,9 +103,11 @@ class FlashcardGenerator(
 
         require(session.id.isNotBlank()) { "Session ID must not be blank" }
 
+        FC_GEN_LOGGER.info("Initializing FlashcardGenerator for session ${session.id}, document ${session.documentId}")
         documentTopics = documentChunks
             .getByDocumentId(session.documentId)
             .sortedBy { it.index }
+        FC_GEN_LOGGER.info("Loaded ${documentTopics.size} document topics for flashcard generation")
 
         documentStorage.add(
             documentTopics
@@ -129,15 +134,18 @@ class FlashcardGenerator(
         fun getNextTopic(): String {
             toolCallsInBatch++
             if (index >= documentTopics.size) {
+                FC_GEN_LOGGER.info("All ${documentTopics.size} topics exhausted. No more topics available.")
                 exhausted = true
                 return "No more topics available."
             }
 
             if (toolCallsInBatch >= 4) {
+                FC_GEN_LOGGER.info("Batch quota reached (4 topics). Pausing topic retrieval.")
                 return "ERROR: Batch quota reached (4 topics). You MUST now generate flashcards for the topics already retrieved before calling this tool again."
             }
             val topic = documentTopics.find { it.index == index }
                 ?: return "Topic at index $index not found."
+            FC_GEN_LOGGER.info("Retrieving topic ${index + 1}/${documentTopics.size}: '${topic.header}'")
             index++
             return markdown {
                 h1(topic.header)
@@ -150,6 +158,7 @@ class FlashcardGenerator(
         fun search(
             @LLMDescription("The query to search for related information.") query: String
         ): String {
+            FC_GEN_LOGGER.info("Executing Cohere rerank search: '$query'")
             val cohere = Cohere.builder()
                 .token(AZURE_API_KEY)
                 .environment(
@@ -260,18 +269,21 @@ class FlashcardGenerator(
 
         val existingCards = flashcards.getByDocumentId(session.documentId)
         if (existingCards.isNotEmpty()) {
+            FC_GEN_LOGGER.info("Found ${existingCards.size} existing flashcards. Resuming from last topic index.")
             toolset.index = existingCards.maxOf { fc ->
                 documentTopics.first { it.id == fc.chunkId }.index
             } + 1
         }
 
         if (toolset.index >= documentTopics.size) {
+            FC_GEN_LOGGER.info("All topics already covered. Returning ${existingCards.size} existing cards.")
             exhausted = true
             return flow {
                 existingCards.forEach { emit(it) }
             }
         }
 
+        FC_GEN_LOGGER.info("Starting AI flashcard generation from topic index ${toolset.index}...")
         val frameChannel = Channel<StreamFrame>(Channel.UNLIMITED)
 
         if (!::generationAgent.isInitialized) {
@@ -282,7 +294,7 @@ class FlashcardGenerator(
             try {
                 generationAgent.run("Generate flashcards for the document.")
             } finally {
-                // Signal exhaustion to the parser if the agent finishes for any reason
+                FC_GEN_LOGGER.info("Flashcard generation agent finished. Exhausted=$exhausted")
                 exhausted = true
                 frameChannel.close()
             }
@@ -488,6 +500,7 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                             rationale = rationale
                         )
 
+                        FC_GEN_LOGGER.info("Emitting flashcard: '${flashcard.front.take(60)}...' [${flashcard.importance}] topic='${flashcard.topic}'")
                         emit(flashcard)
                         coroutineScope {
                             launch(Dispatchers.IO) {

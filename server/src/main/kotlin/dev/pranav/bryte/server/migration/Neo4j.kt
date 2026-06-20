@@ -5,11 +5,14 @@ import dev.pranav.bryte.model.session.DocumentItem
 import dev.pranav.bryte.server.NEO4J_PASSWORD
 import dev.pranav.bryte.server.NEO4J_URI
 import dev.pranav.bryte.server.NEO4J_USERNAME
+import io.ktor.util.logging.*
 import kotlinx.coroutines.delay
 import org.neo4j.driver.AuthTokens
 import org.neo4j.driver.GraphDatabase
 import org.neo4j.driver.Values
 import kotlin.time.Duration.Companion.milliseconds
+
+internal val GRAPH_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.migration.Neo4jManager")
 
 class Neo4jManager {
     private val driver = GraphDatabase.driver(
@@ -59,7 +62,12 @@ class Neo4jManager {
         docBias: Double = 0.15,
         crossDocPenalty: Double = 0.05
     ): List<Map<String, Any>> {
-        if (queryEmbedding.isEmpty()) return emptyList()
+        if (queryEmbedding.isEmpty()) {
+            GRAPH_LOGGER.warn("searchKnowledgeGraphWeighted called with empty query embedding.")
+            return emptyList()
+        }
+
+        GRAPH_LOGGER.info("Executing weighted graph search for User: $userId | FocusDoc: $focusDocumentId | TopK: $topK")
 
         driver.session().use { session ->
             return session.executeRead { tx ->
@@ -113,6 +121,7 @@ class Neo4jManager {
     }
 
     fun ingestDocument(doc: DocumentItem, chunks: List<DocumentChunk>) {
+        GRAPH_LOGGER.info("Ingesting document '${doc.title}' with ${chunks.size} chunks into Neo4j...")
         driver.session().use { session ->
             session.executeWrite { tx ->
                 tx.run(
@@ -159,11 +168,14 @@ class Neo4jManager {
         threshold: Double = 0.65,
         bias: Double = 0.15
     ) {
+        GRAPH_LOGGER.info("Interlinking chunks for User: $userId | Doc: $documentId | threshold=$threshold, bias=$bias")
         var isReady = false
         while (!isReady) {
+            GRAPH_LOGGER.info("Waiting for vector index 'chunk_embeddings' to become ONLINE...")
             delay(2000.milliseconds)
             isReady = checkIndexReady()
         }
+        GRAPH_LOGGER.info("Vector index ready. Executing interlink query...")
 
         driver.session().use { session ->
             session.executeWrite { tx ->
@@ -277,6 +289,7 @@ class Neo4jManager {
         documentId: String,
         maxLinksPerNode: Int = 5
     ): Map<String, Any> {
+        GRAPH_LOGGER.info("Fetching graph visualization for User: $userId | Doc: $documentId | maxLinks=$maxLinksPerNode")
         return driver.session().use { session ->
             session.executeRead { tx ->
                 val cypher = """

@@ -17,7 +17,6 @@ fun Application.module() {
     configureSockets()
     configureFrameworks()
     configureSerialization()
-    configureTemplating()
     configureHTTP()
     configureRouting()
     configureRpcRoutes()

@@ -27,7 +27,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:auth-kt:3.6.0")
     implementation("io.github.jan-tennert.supabase:storage-kt:3.6.0")
     implementation("io.github.jan-tennert.supabase:postgrest-kt:3.6.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.8.0-0.6.x-compat")
 
     implementation("org.neo4j:neo4j:2026.05.0")
 

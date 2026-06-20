@@ -28,4 +28,11 @@ interface FlashcardService {
      * @return A [Flow] of [Flashcard] objects, providing flashcards one by one.
      */
     fun flashcards(): Flow<Flashcard>
+
+    /**
+     * Submits an FSRS review for a flashcard.
+     * @param review The [dev.pranav.bryte.model.stats.FSRSReview] review containing the flashcard ID and user's grade.
+     * @return The updated [dev.pranav.bryte.model.stats.FSRSState].
+     */
+    suspend fun submitReview(review: dev.pranav.bryte.model.stats.FSRSReview): dev.pranav.bryte.model.stats.FSRSState
 }

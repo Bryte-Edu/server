@@ -18,11 +18,12 @@ fun Application.configureFlashcardRoutes() {
     routing {
         authenticate("auth-jwt") {
             post("/api/flashcards") {
+                val document = call.receive<FlashcardRequest>()
+                call.application.environment.log.info("Fetching flashcards for document: ${document.documentId}")
                 val userId by call.userId()
                 val flashcardRepository by supabase.flashcards()
                 val documents by supabase.documents()
 
-                val document = call.receive<FlashcardRequest>()
                 if (document.documentId.isBlank()) {
                     throw BadRequestException("documentId cannot be blank")
                 }
