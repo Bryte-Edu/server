@@ -2,6 +2,7 @@ package dev.pranav.bryte.server
 
 import dev.pranav.bryte.model.DocumentType
 import dev.pranav.bryte.server.document.parser.file.FileParser
+import dev.pranav.bryte.server.document.parser.web.WebpageParser
 import dev.pranav.bryte.server.document.parser.youtube.YouTube
 import dev.pranav.bryte.server.errors.BadRequestException
 import dev.pranav.bryte.server.errors.ExternalServiceException
@@ -31,12 +32,13 @@ class ApplicationTest {
         assertIs<FileParser>(getDocumentParser(DocumentType.DOCX))
         assertIs<FileParser>(getDocumentParser(DocumentType.PPTX))
         assertIs<YouTube>(getDocumentParser(DocumentType.YOUTUBE))
+        assertIs<WebpageParser>(getDocumentParser(DocumentType.WEBPAGE))
+
     }
 
     @Test
     fun testGetDocumentParserRejectsUnsupportedTypes() {
         assertFailsWith<BadRequestException> { getDocumentParser(DocumentType.EPUB) }
-        assertFailsWith<BadRequestException> { getDocumentParser(DocumentType.WEBPAGE) }
     }
 
     @Test

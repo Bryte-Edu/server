@@ -68,51 +68,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
 
-val generateBuildConfig by tasks.registering(DefaultTask::class) {
-    val envFile = project.file(".env")
-    inputs.file(envFile)
-
-    val outputDir = project.layout.buildDirectory.dir("generated/source/env/kotlin")
-    outputs.dir(outputDir)
-    val envVars = mutableMapOf<String, String>()
-
-    doLast {
-        if (envFile.exists()) {
-            envFile.readLines().forEach { line ->
-                if (line.isNotBlank() && !line.startsWith('#')) {
-                    val env = line.split('=', limit = 2)
-                    envVars[env.first()] = env.last()
-                }
-            }
-        }
-
-        val packageName = "dev.pranav.bryte.server"
-        val configFileName = "BuildConfig.kt"
-
-        val content = buildString {
-            appendLine("package $packageName")
-            appendLine("")
-
-            envVars.forEach { (key, value) ->
-                appendLine("const val $key: String = \"$value\"")
-            }
-        }
-
-        val outputPackageDir = outputDir.get().asFile.resolve(packageName.replace('.', '/'))
-        outputPackageDir.mkdirs()
-        outputPackageDir.resolve(configFileName).writeText(content)
-    }
-}
-
-
-tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
-    sourceSets.getByName("main") {
-        kotlin.srcDir(generateBuildConfig.get().outputs.files.singleFile)
-
-        dependsOn(generateBuildConfig)
-    }
-}
-
 tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar> {
     isZip64 = true
     mergeServiceFiles()
