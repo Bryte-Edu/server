@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlin.time.Clock
 
-internal val LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.services.SessionService")
+internal val SESSION_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.services.SessionService")
 
 class SessionServiceImpl(val session: Session) : SessionService {
 
@@ -62,21 +62,21 @@ class SessionServiceImpl(val session: Session) : SessionService {
 
         val overdueStates = fsrsRepo.getOverdue(session.id, Clock.System.now().toString())
         if (overdueStates.isNotEmpty()) {
-            LOGGER.info("Found ${overdueStates.size} overdue FSRS questions for session ${session.id}. Emitting first.")
+            SESSION_LOGGER.info("Found ${overdueStates.size} overdue FSRS questions for session ${session.id}. Emitting first.")
             val overdueIds = overdueStates.map { it.questionId }
             val overdueQuestions = questionsRepo.getByIds(overdueIds)
             for (q in overdueQuestions) {
                 emit(q)
             }
         } else {
-            LOGGER.info("No overdue questions found for session ${session.id}.")
+            SESSION_LOGGER.info("No overdue questions found for session ${session.id}.")
         }
 
         if (!generator.exhausted) {
-            LOGGER.info("Falling back to generator for new questions.")
+            SESSION_LOGGER.info("Falling back to generator for new questions.")
           generator.generateQuestions().collect { emit(it) }
         } else {
-            LOGGER.info("Generator exhausted. No more questions.")
+            SESSION_LOGGER.info("Generator exhausted. No more questions.")
         }
     }
 
@@ -107,7 +107,7 @@ class SessionServiceImpl(val session: Session) : SessionService {
             questionId = questionId,
             topicId = question.chunkId
         )
-        LOGGER.info("Calculated new FSRS state for question $questionId: stability=${nextState.stability}, difficulty=${nextState.difficulty}, scheduled for ${nextState.nextReview}")
+        SESSION_LOGGER.info("Calculated new FSRS state for question $questionId: stability=${nextState.stability}, difficulty=${nextState.difficulty}, scheduled for ${nextState.nextReview}")
 
         // Save state
         val savedState = fsrsRepo.upsert(nextState) ?: throw IllegalStateException("Failed to save FSRS state")

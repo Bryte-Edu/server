@@ -49,7 +49,6 @@ Generation tasks are managed by the JetBrains Koog framework, utilizing `AIAgent
 
 ### Resilient Stream Parsing
 LLM outputs are processed in real-time via a custom `MarkdownStreamingParser`.
-* **Fragment Recovery**: The parser includes a heuristic pipe-counting mechanism (`countPipes < 5`). If a mid-stream LLM token cut breaks a Markdown table row, the parser buffers the incomplete line and defers processing until the next chunk arrives, ensuring structural integrity before emitting typed Kotlin objects.
 * **Structure Fallback**: For complex structured outputs, the system employs a `StructureFixingParser` that automatically retries and repairs malformed JSON/Markdown up to 4 times using a lightweight model (e.g., `Gemini2_5FlashLite`).
 
 ---

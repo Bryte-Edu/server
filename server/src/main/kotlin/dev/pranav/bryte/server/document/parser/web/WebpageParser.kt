@@ -14,6 +14,7 @@ import dev.pranav.bryte.server.document.ParsedDocument
 import dev.pranav.bryte.server.document.Topic
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import kotlinx.serialization.SerialName
@@ -31,7 +32,7 @@ class WebpageParser : DocParser<String> {
         val client = HttpClient(CIO)
         val htmlContent = try {
             client.get(input).bodyAsText()
-        } catch (e: Exception) {
+        } catch (e: HttpRequestTimeoutException) {
             return null
         } finally {
             client.close()

@@ -5,13 +5,13 @@ import io.ktor.server.request.*
 import io.ktor.util.*
 import io.ktor.util.logging.*
 
-internal val LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.plugins.RequestTracePlugin")
+internal val TRACE_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.plugins.RequestTracePlugin")
 internal val StartTimeKey = AttributeKey<Long>("StartTime")
 
 val RequestTracePlugin = createRouteScopedPlugin("RequestTracePlugin") {
     onCall { call ->
         call.attributes.put(StartTimeKey, System.currentTimeMillis())
-        LOGGER.trace("--> Processing request: ${call.request.httpMethod.value} ${call.request.uri}")
+        TRACE_LOGGER.trace("--> Processing request: ${call.request.httpMethod.value} ${call.request.uri}")
     }
 
     onCallRespond { call, _ ->
@@ -19,7 +19,7 @@ val RequestTracePlugin = createRouteScopedPlugin("RequestTracePlugin") {
         if (startTime != null) {
             val duration = System.currentTimeMillis() - startTime
             val status = call.response.status()?.value ?: "Unknown"
-            LOGGER.trace(
+            TRACE_LOGGER.trace(
                 "<-- Completed request: {} {} with status {} in {}ms",
                 call.request.httpMethod.value,
                 call.request.uri,

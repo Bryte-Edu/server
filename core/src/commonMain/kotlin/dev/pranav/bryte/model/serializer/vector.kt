@@ -26,8 +26,7 @@ object VectorSerializer : KSerializer<List<Double>?> {
         return try {
             Json.decodeFromString(ListSerializer(Double.serializer()), stringValue)
         } catch (e: Exception) {
-            // If deserialization fails, return null
-            null
+            throw IllegalStateException(e)
         }
     }
 

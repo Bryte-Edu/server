@@ -19,16 +19,10 @@ class DocumentsRepository(val postgrest: PostgrestQueryBuilder) {
         }.decodeSingle()
     }
 
-    suspend fun getByFileId(fileId: String): DocumentItem {
+    suspend fun getBySource(source: String): DocumentItem {
         return postgrest.select {
-            filter { eq("file_id", fileId) }
+            filter { eq("source", source) }
         }.decodeSingle()
-    }
-
-    suspend fun getBySourceHash(hash: String): DocumentItem? {
-        return postgrest.select {
-            filter { eq("source_hash", hash) }
-        }.decodeSingleOrNull()
     }
 
     suspend fun insert(doc: DocumentItem): DocumentItem {

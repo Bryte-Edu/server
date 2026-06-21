@@ -13,11 +13,11 @@ import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import io.ktor.server.response.*
 import java.math.BigInteger
+import java.security.AlgorithmParameters
 import java.security.KeyFactory
-import java.security.KeyPairGenerator
-import java.security.SecureRandom
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import java.security.spec.ECPoint
 import java.security.spec.ECPublicKeySpec
 import java.util.*
@@ -71,24 +71,15 @@ fun Application.configureSecurity() {
  * @throws IllegalArgumentException if the JWK is invalid or unsupported.
  */
 fun jwkToECPublicKey(jwk: Map<String, String>): ECPublicKey {
-    // Decode x ad y from Base64URL to BigInteger
     val xBytes = Base64.getUrlDecoder().decode(jwk["x"])
     val yBytes = Base64.getUrlDecoder().decode(jwk["y"])
-    val x = BigInteger(1, xBytes) // 1 means positive
-    val y = BigInteger(1, yBytes)
+    val pubPoint = ECPoint(BigInteger(1, xBytes), BigInteger(1, yBytes))
 
-    // Generate the EC parameters for the secp256r1 curve
-    val keyPairGenerator = KeyPairGenerator.getInstance("EC")
-    val ecSpec = ECGenParameterSpec("secp256r1")
-    keyPairGenerator.initialize(ecSpec, SecureRandom())
-    val keyPair = keyPairGenerator.generateKeyPair()
-    val ecPublicKey = keyPair.public as ECPublicKey
-    val params = ecPublicKey.params
+    val ecParameters = AlgorithmParameters.getInstance("EC").run {
+        init(ECGenParameterSpec("secp256r1"))
+        getParameterSpec(ECParameterSpec::class.java)
+    }
 
-    // Create the public key
-    val pubPoint = ECPoint(x, y)
-    val pubSpec = ECPublicKeySpec(pubPoint, params)
-
-    val keyFactory = KeyFactory.getInstance("EC")
-    return keyFactory.generatePublic(pubSpec) as ECPublicKey
+    val pubSpec = ECPublicKeySpec(pubPoint, ecParameters)
+    return KeyFactory.getInstance("EC").generatePublic(pubSpec) as ECPublicKey
 }

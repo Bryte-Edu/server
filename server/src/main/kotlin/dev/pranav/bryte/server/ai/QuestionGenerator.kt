@@ -112,10 +112,18 @@ class QuestionGenerator(
     @Suppress("unused")
     @LLMDescription("Tools for retrieving document topics and searching content.")
     inner class RAGToolset : ToolSet {
+        @Volatile
+        var activeChunkId: String = ""
+            private set
+
         var index = 0
 
-        fun currentTopicId(): String {
-            return documentTopics.elementAt(index).id!!
+        fun currentTopic(): DocumentChunk {
+            if (activeChunkId.isNotBlank()) {
+                return documentTopics.find { it.id == activeChunkId } ?: documentTopics.last()
+            }
+
+            return documentTopics.find { it.index == index } ?: documentTopics.last()
         }
 
         @Tool
@@ -125,7 +133,10 @@ class QuestionGenerator(
                 return "No more topics available."
             }
             val topic = documentTopics.elementAt(index)
+
+            activeChunkId = topic.id!!
             index++
+
             return markdown {
                 h1(topic.header)
                 text(topic.content)
@@ -369,6 +380,7 @@ class QuestionGenerator(
                 var difficulty = ""
                 var explanation = ""
                 var correctAnswerIndex = -1
+                var questionChunkId = toolset.activeChunkId
                 val bulletPoints = mutableListOf<String>()
                 val rows = mutableListOf<Pair<String, String>>()
                 val correctMatches = mutableListOf<Pair<Int, Int>>()
@@ -376,62 +388,28 @@ class QuestionGenerator(
                 onHeader(4) { headerText ->
                     if (headerText.isEmpty()) return@onHeader
 
-                    if (type.isEmpty()) {
-                        type = headerText
-                        rows.clear()
-                        correctMatches.clear()
-                        bulletPoints.clear()
-                        return@onHeader
+                    if (type.isNotEmpty()) {
+                        val content =
+                            buildContent(type, question, bulletPoints, correctAnswerIndex, rows, correctMatches)
+
+                        val question = Question(
+                            sessionId = session.id,
+                            chunkId = questionChunkId,
+                            page = documentTopics.indexOfFirst { it.id == questionChunkId } + 1,
+                            type = content.type,
+                            difficulty = difficulty,
+                            content = content,
+                            explanation = explanation,
+                        )
+
+                        emit(questions.insert(question)!!)
                     }
-
-                    val content = when (type) {
-                        "mcq" -> {
-                            Content.MultipleChoice(
-                                question, options = bulletPoints.toList(), correctOptionIndex = correctAnswerIndex
-                            )
-                        }
-
-                        "spot_the_error" -> {
-                            val steps = bulletPoints.mapIndexed { index, desc ->
-                                Content.SpotTheError.Step(
-                                    isCorrect = index != correctAnswerIndex, stepNumber = index + 1, description = desc
-                                )
-                            }
-                            Content.SpotTheError(
-                                steps = steps, scenario = question, errorStepIndex = correctAnswerIndex
-                            )
-                        }
-
-                        "match_the_following" -> {
-                            val leftItems = rows.map { it.first }
-                            val rightItems = rows.map { it.second }
-
-                            Content.MatchTheFollowing(
-                                leftItems = leftItems, rightItems = rightItems, correctMatches = correctMatches
-                            )
-                        }
-
-                        else -> {
-                            throw IllegalArgumentException("Unknown question type: $type")
-                        }
-                    }
-
-                    val question = Question(
-                        sessionId = session.id,
-                        chunkId = toolset.currentTopicId(),
-                        page = toolset.index + 1,
-                        type = content.type,
-                        difficulty = difficulty,
-                        content = content,
-                        explanation = explanation,
-                    )
-
-                    emit(questions.insert(question)!!)
-
-                    correctMatches.clear()
-                    rows.clear()
 
                     type = headerText
+                    questionChunkId = toolset.activeChunkId
+                    rows.clear()
+                    correctMatches.clear()
+                    bulletPoints.clear()
                 }
 
                 onHeader(1) { headerText ->
@@ -479,65 +457,67 @@ class QuestionGenerator(
                 }
 
                 onFinishStream {
-                    val shouldEmitFinal = when (type) {
-                        "match_the_following" -> rows.isNotEmpty()
-                        "mcq", "spot_the_error" -> question.isNotEmpty() && bulletPoints.isNotEmpty()
-                        else -> false
-                    }
-
-                    if (shouldEmitFinal) {
-                        val content = when (type) {
-                            "mcq" -> {
-                                Content.MultipleChoice(
-                                    question, options = bulletPoints.toList(), correctOptionIndex = correctAnswerIndex
-                                )
-                            }
-
-                            "spot_the_error" -> {
-                                val steps = bulletPoints.mapIndexed { index, desc ->
-                                    Content.SpotTheError.Step(
-                                        isCorrect = index != correctAnswerIndex,
-                                        stepNumber = index + 1,
-                                        description = desc
-                                    )
-                                }
-                                Content.SpotTheError(
-                                    steps = steps, scenario = question, errorStepIndex = correctAnswerIndex
-                                )
-                            }
-
-                            "match_the_following" -> {
-                                val leftItems = rows.map { it.first }
-                                val rightItems = rows.map { it.second }
-                                Content.MatchTheFollowing(
-                                    leftItems = leftItems, rightItems = rightItems, correctMatches = correctMatches
-                                )
-                            }
-
-                            else -> {
-                                throw IllegalArgumentException("Unknown question type: $type")
-                            }
-                        }
+                    if (isValidQuestionBlock(type, question, rows, bulletPoints)) {
+                        val content =
+                            buildContent(type, question, bulletPoints, correctAnswerIndex, rows, correctMatches)
 
                         val question =
                             Question(
                                 sessionId = session.id,
-                                chunkId = toolset.currentTopicId(),
-                                page = toolset.index,
+                                chunkId = questionChunkId,
+                                page = documentTopics.indexOfFirst { it.id == questionChunkId } + 1,
                                 type = content.type,
                                 difficulty = difficulty,
                                 content = content,
                                 explanation = explanation,
                             )
 
-                        questions.insert(question)
-
-                        emit(question)
-
+                        emit(questions.insert(question)!!)
                     }
                 }
 
+
             }.parseStream(markdownStream.filterTextOnly())
+        }
+    }
+
+    private fun buildContent(
+        type: String,
+        question: String,
+        bulletPoints: List<String>,
+        correctAnswerIndex: Int,
+        rows: List<Pair<String, String>>,
+        correctMatches: List<Pair<Int, Int>>
+    ): Content {
+        return when (type) {
+            "mcq" -> Content.MultipleChoice(
+                question, options = bulletPoints.toList(), correctOptionIndex = correctAnswerIndex
+            )
+
+            "spot_the_error" -> {
+                val steps = bulletPoints.mapIndexed { index, desc ->
+                    Content.SpotTheError.Step(
+                        isCorrect = index != correctAnswerIndex,
+                        stepNumber = index + 1,
+                        description = desc
+                    )
+                }
+                Content.SpotTheError(steps = steps, scenario = question, errorStepIndex = correctAnswerIndex)
+            }
+
+            "match_the_following" -> Content.MatchTheFollowing(
+                leftItems = rows.map { it.first }, rightItems = rows.map { it.second }, correctMatches = correctMatches
+            )
+
+            else -> throw IllegalArgumentException("Unknown question type: $type")
+        }
+    }
+
+    private fun isValidQuestionBlock(type: String, question: String, rows: List<*>, bulletPoints: List<*>): Boolean {
+        return when (type) {
+            "match_the_following" -> rows.isNotEmpty()
+            "mcq", "spot_the_error" -> question.isNotEmpty() && bulletPoints.isNotEmpty()
+            else -> false
         }
     }
 

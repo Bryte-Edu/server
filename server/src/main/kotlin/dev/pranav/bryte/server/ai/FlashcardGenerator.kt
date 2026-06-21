@@ -42,10 +42,7 @@ import dev.pranav.bryte.server.util.serialization.markdownStreamingParser
 import io.ktor.util.logging.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.consumeAsFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.*
 import kotlin.time.Duration.Companion.seconds
 
 internal val FC_GEN_LOGGER = KtorSimpleLogger("dev.pranav.bryte.server.ai.FlashcardGenerator")
@@ -121,7 +118,15 @@ class FlashcardGenerator(
         var index = 0
         var toolCallsInBatch = 0
 
+        @Volatile
+        var activeChunkId: String = ""
+            private set
+
         fun currentTopic(): DocumentChunk {
+            if (activeChunkId.isNotBlank()) {
+                return documentTopics.find { it.id == activeChunkId } ?: documentTopics.last()
+            }
+
             return documentTopics.find { it.index == index } ?: documentTopics.last()
         }
 
@@ -141,6 +146,9 @@ class FlashcardGenerator(
             }
             val topic = documentTopics.find { it.index == index }
                 ?: return "Topic at index $index not found."
+
+            activeChunkId = topic.id!!
+
             FC_GEN_LOGGER.info("Retrieving topic ${index + 1}/${documentTopics.size}: '${topic.header}'")
             index++
             return markdown {
@@ -286,13 +294,15 @@ class FlashcardGenerator(
             createAgent(toolset, frameChannel)
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                generationAgent.run("Generate flashcards for the document.")
-            } finally {
-                FC_GEN_LOGGER.info("Flashcard generation agent finished. Exhausted=$exhausted")
-                exhausted = true
-                frameChannel.close()
+        coroutineScope {
+            launch(Dispatchers.IO) {
+                try {
+                    generationAgent.run("Generate flashcards for the document.")
+                } finally {
+                    FC_GEN_LOGGER.info("Flashcard generation agent finished. Exhausted=$exhausted")
+                    exhausted = true
+                    frameChannel.close()
+                }
             }
         }
 
@@ -478,32 +488,15 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                 var rationale = ""
 
                 onHeader(1) {
-                    val chunk = toolset.currentTopic()
-
                     if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty() && rationale.isNotEmpty()) {
-                        val flashcard = Flashcard(
-                            documentId = session.documentId,
-                            chunkId = chunk.id!!,
-                            page = chunk.pageNumber.first(),
-                            front = front,
-                            back = back,
-                            topic = topic,
-                            importance = when (importanceLevel) {
-                                "easy" -> ImportanceLevel.LOW
-                                "medium" -> ImportanceLevel.MEDIUM
-                                "hard" -> ImportanceLevel.HIGH
-                                else -> ImportanceLevel.MEDIUM
-                            },
-                            rationale = rationale
+                        emitFlashcard(
+                            toolset.activeChunkId,
+                            front,
+                            back,
+                            topic,
+                            importanceLevel,
+                            rationale
                         )
-
-                        FC_GEN_LOGGER.info("Emitting flashcard: '${flashcard.front.take(60)}...' [${flashcard.importance}] topic='${flashcard.topic}'")
-                        emit(flashcard)
-                        coroutineScope {
-                            launch(Dispatchers.IO) {
-                                flashcards.insert(flashcard)
-                            }
-                        }
 
                         front = ""
                         back = ""
@@ -537,32 +530,41 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
                 }
 
                 onFinishStream {
-                    val chunk = toolset.currentTopic()
-
                     if (front.isNotEmpty() && back.isNotEmpty() && topic.isNotEmpty() && importanceLevel.isNotEmpty() && rationale.isNotEmpty()) {
-                        val flashcard = Flashcard(
-                            documentId = session.documentId,
-                            chunkId = chunk.id!!,
-                            page = chunk.pageNumber.first(),
+                        emitFlashcard(
+                            chunkId = toolset.activeChunkId,
                             front = front,
                             back = back,
                             topic = topic,
-                            importance = when (importanceLevel) {
-                                "easy" -> ImportanceLevel.LOW
-                                "medium" -> ImportanceLevel.MEDIUM
-                                "hard" -> ImportanceLevel.HIGH
-                                else -> ImportanceLevel.MEDIUM
-                            },
+                            importance = importanceLevel,
                             rationale = rationale
                         )
-
-                        emit(flashcard)
-                        flashcards.insert(flashcard)
                     }
                 }
 
             }.parseStream(markdownStream.filterTextOnly())
         }
+    }
+
+    private suspend fun FlowCollector<Flashcard>.emitFlashcard(
+        chunkId: String, front: String, back: String, topic: String, importance: String, rationale: String
+    ) {
+        val flashcard = Flashcard(
+            documentId = session.documentId,
+            chunkId = chunkId,
+            page = documentTopics.find { it.id == chunkId }?.pageNumber?.first() ?: 0,
+            front = front,
+            back = back,
+            topic = topic,
+            importance = when (importance.lowercase()) {
+                "easy" -> ImportanceLevel.LOW
+                "hard" -> ImportanceLevel.HIGH
+                else -> ImportanceLevel.MEDIUM
+            },
+            rationale = rationale
+        )
+
+        flashcards.insert(flashcard)?.let { emit(it) }
     }
 
     companion object {

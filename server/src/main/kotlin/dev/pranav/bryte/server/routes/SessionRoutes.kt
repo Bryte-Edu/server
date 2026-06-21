@@ -18,7 +18,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sse.*
 import io.ktor.sse.*
-import io.modelcontextprotocol.kotlin.sdk.types.toJson
 import kotlin.time.Duration.Companion.seconds
 
 private val llmClient by lazy {
@@ -40,7 +39,7 @@ fun Application.configureSessionRoutes() {
                 val documentId = call.parameters["documentId"] ?: throw BadRequestException("documentId is required")
                 try {
                     val result = Neo4jManager().getGraphVisualization(userId, documentId)
-                    call.respond(HttpStatusCode.OK, result.toJson())
+                    call.respond(HttpStatusCode.OK, result)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     throw ExternalServiceException("Failed to fetch graph visualization: ${e.message}")
