@@ -17,9 +17,6 @@ import ai.koog.prompt.Prompt
 import ai.koog.prompt.executor.clients.LLMClientException
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
-import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
-import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
-import ai.koog.prompt.executor.clients.openai.OpenAIModels
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.markdown.markdown
 import ai.koog.prompt.streaming.StreamFrame
@@ -333,19 +330,21 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
             ) {
                 system(systemPrompt)
             },
-            model = OpenAIModels.Chat.GPT5_2.copy(id = "gpt-5.2-chat"),
+            model = MistralAIModels.Chat.MistralSmall2,
             maxAgentIterations = 150,
         )
 
-
-        generationAgent = AIAgent<String, Flow<StreamFrame>>(
+        generationAgent = AIAgent(
             promptExecutor = MultiLLMPromptExecutor(
-                OpenAILLMClient(
-                    apiKey = AZURE_API_KEY,
-                    settings = OpenAIClientSettings(
-                        baseUrl = AZURE_API_URL,
-                    )
+                MistralAILLMClient(
+                    MISTRAL_API_KEY
                 )
+//                OpenAILLMClient(
+//                    apiKey = AZURE_API_KEY,
+//                    settings = OpenAIClientSettings(
+//                        baseUrl = AZURE_API_URL,
+//                    )
+//                )
             ),
             agentConfig = agentConfig,
             strategy = flashcardStrategy("flashcard-strategy", toolset, receiver),
@@ -428,13 +427,13 @@ Mandatory Field: Every card must include a hidden_rationale explaining the under
             edge(nodeExecuteTool forwardTo nodeSendToolResult)
 
             edge(
-                (nodeSendToolResult forwardTo returnStream)
-                        onTextMessage { true }
+                nodeSendToolResult forwardTo nodeExecuteTool
+                        onToolCalls { true }
             )
 
             edge(
-                nodeSendToolResult forwardTo nodeExecuteTool
-                        onToolCalls { true }
+                (nodeSendToolResult forwardTo returnStream)
+                        onTextMessage { true }
             )
 
             edge(

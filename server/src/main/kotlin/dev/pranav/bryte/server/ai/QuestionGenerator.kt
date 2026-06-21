@@ -15,6 +15,7 @@ import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.clients.mistralai.MistralAILLMClient
 import ai.koog.prompt.executor.clients.mistralai.MistralAIModels
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.executor.llms.all.simpleMistralAIExecutor
 import ai.koog.prompt.markdown.markdown
 import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.prompt.streaming.filterTextOnly
@@ -329,7 +330,7 @@ class QuestionGenerator(
         val agentConfig = AIAgentConfig(
             prompt = Prompt.build("Question Generation Prompt") {
                 system(systemPrompt)
-            }, model = GoogleModels.Gemini2_5FlashLite, maxAgentIterations = 50
+            }, model = MistralAIModels.Chat.MistralSmall2, maxAgentIterations = 50
         )
 
 
@@ -349,7 +350,7 @@ class QuestionGenerator(
         }
 
         generationAgent = AIAgent(
-            promptExecutor = simpleGoogleAIExecutor(GEMINI_API_KEY),
+            promptExecutor = simpleMistralAIExecutor(MISTRAL_API_KEY),
             agentConfig = agentConfig,
             strategy = agentStrategy,
             toolRegistry = ToolRegistry {
@@ -425,9 +426,7 @@ class QuestionGenerator(
                         explanation = explanation,
                     )
 
-                    questions.insert(question)
-
-                    emit(question)
+                    emit(questions.insert(question)!!)
 
                     correctMatches.clear()
                     rows.clear()
