@@ -36,6 +36,7 @@ fun Application.configureFlashcardRoutes() {
                 }
 
                 val flashcards = flashcardRepository.getByDocumentId(document.documentId)
+
                 call.respond(HttpStatusCode.OK, flashcards)
             }
         }

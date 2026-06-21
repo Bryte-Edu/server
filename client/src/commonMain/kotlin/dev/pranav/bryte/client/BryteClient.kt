@@ -2,7 +2,6 @@ package dev.pranav.bryte.client
 
 import dev.pranav.bryte.FlashcardService
 import dev.pranav.bryte.SessionService
-import dev.pranav.bryte.model.CreateSessionRequest
 import dev.pranav.bryte.model.DocumentType
 import dev.pranav.bryte.model.FlashcardRequest
 import dev.pranav.bryte.model.SessionCreateResponse
@@ -10,11 +9,14 @@ import dev.pranav.bryte.model.card.Flashcard
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.sse.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.rpc.krpc.ktor.client.installKrpc
 import kotlinx.rpc.krpc.ktor.client.rpc
 import kotlinx.rpc.krpc.serialization.json.json
@@ -24,21 +26,13 @@ class BryteClient(
     var baseUrl: String,
     var authToken: String? = null
 ) {
-    private val wsUrl: String
-        get() = baseUrl.replace("http", "ws")
+    private val wsUrl = baseUrl.replace("http", "ws")
 
     private val client = HttpClient(io.ktor.client.engine.cio.CIO) {
-        installKrpc {
-            serialization {
-                json()
-            }
-        }
-
+        installKrpc { serialization { json() } }
+        install(SSE)
         install(WebSockets)
-
-        install(ContentNegotiation) {
-            json()
-        }
+        install(ContentNegotiation) { json() }
     }
 
     private fun HttpRequestBuilder.applyAuth() {
@@ -47,13 +41,37 @@ class BryteClient(
         }
     }
 
-    suspend fun createSession(docType: DocumentType, source: String): SessionCreateResponse {
-        return client.post {
-            url("$baseUrl/api/create-session")
-            applyAuth()
-            setBody(CreateSessionRequest(docType, source))
-            contentType(ContentType.Application.Json)
-        }.body()
+    suspend fun createSession(
+        docType: DocumentType,
+        source: String,
+        onStatus: ((String) -> Unit)? = null
+    ): SessionCreateResponse {
+        var sessionId: String? = null
+
+        client.sse(
+            urlString = "$baseUrl/api/create-session",
+            request = {
+                applyAuth()
+
+                parameter("docType", docType.name)
+                parameter("source", source)
+            }
+        ) {
+            sessionId = incoming
+                .onEach { event ->
+                    when (event.event) {
+                        "status" -> onStatus?.invoke(event.data ?: "")
+                        "error" -> error(event.data ?: "Session creation failed")
+                        // "heartbeat" events are silently ignored
+                    }
+                }
+                .first { it.event == "done" }
+                .data
+        }
+
+        return SessionCreateResponse(
+            sessionId ?: error("SSE stream closed without a session ID")
+        )
     }
 
     suspend fun getFlashcards(documentId: String): List<Flashcard> {
@@ -72,26 +90,28 @@ class BryteClient(
     }
 
     suspend fun getSessionRpc(sessionId: String): SessionService {
-        val rpcClient = client.rpc {
+        return client.rpc {
+            applyAuth()
+
             url {
-                takeFrom(wsUrl)
+                takeFrom(wsUrl);
                 encodedPath = "/api/rpc/$sessionId"
+
+                authToken?.let { parameters.append("token", it) }
             }
-        }
-        return rpcClient.withService<SessionService>()
+        }.withService<SessionService>()
     }
 
     suspend fun getFlashcardRpc(sessionId: String): FlashcardService {
-        val rpcClient = client.rpc {
+        return client.rpc {
             url {
-                takeFrom(wsUrl)
+                takeFrom(wsUrl);
                 encodedPath = "/api/rpc/flashcards/$sessionId"
+
+                authToken?.let { parameters.append("token", it) }
             }
-        }
-        return rpcClient.withService<FlashcardService>()
+        }.withService<FlashcardService>()
     }
 
-    fun close() {
-        client.close()
-    }
+    fun close() = client.close()
 }

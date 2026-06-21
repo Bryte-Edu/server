@@ -155,7 +155,9 @@ fun main() {
                 scope.launch {
                     try {
                         val client = getClient()
-                        val response = client.createSession(type, url)
+                        val response = client.createSession(type, url) {
+                            log(it)
+                        }
                         log("Session Created. Session ID: ${response.sessionId}")
 
                         // We can fetch details via RPC

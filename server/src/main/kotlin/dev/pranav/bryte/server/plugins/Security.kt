@@ -7,6 +7,7 @@ import dev.pranav.bryte.server.JWK_X
 import dev.pranav.bryte.server.JWK_Y
 import dev.pranav.bryte.server.SUPABASE_URL
 import io.ktor.http.*
+import io.ktor.http.auth.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
@@ -33,6 +34,17 @@ fun Application.configureSecurity() {
 
     install(Authentication) {
         jwt("auth-jwt") {
+            authHeader { call ->
+                val header = call.request.parseAuthorizationHeader()
+                if (header != null) return@authHeader header
+
+                val queryToken = call.request.queryParameters["token"]
+                if (!queryToken.isNullOrBlank()) {
+                    return@authHeader HttpAuthHeader.Single("Bearer", queryToken)
+                }
+
+                null
+            }
             verifier(
                 JWT.require(Algorithm.ECDSA256(publicKey))
                     .withAudience("authenticated")

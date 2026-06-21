@@ -4,7 +4,6 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.agent.context.AIAgentContext
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
-import ai.koog.agents.core.annotation.InternalAgentsApi
 import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.*
@@ -303,7 +302,6 @@ class FlashcardGenerator(
         return parseMDStreamToQuestions(frameChannel.consumeAsFlow(), toolset)
     }
 
-    @OptIn(InternalAgentsApi::class)
     private fun createAgent(toolset: DocumentToolset, receiver: Channel<StreamFrame>) {
         val systemPrompt = """
 Role: Expert Flashcard Creator (Active Recall/Spaced Repetition). Objective: Convert document content into high-quality flashcards to promote understanding and learning using provided tools.
