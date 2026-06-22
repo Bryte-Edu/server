@@ -408,6 +408,7 @@ class QuestionGenerator(
                     type = headerText
                     questionChunkId = toolset.activeChunkId
                     rows.clear()
+                    correctAnswerIndex = -1
                     correctMatches.clear()
                     bulletPoints.clear()
                 }

@@ -1,5 +1,6 @@
 package dev.pranav.bryte.server.util.serialization
 
+import dev.pranav.bryte.server.util.serialization.MarkdownParserBuilder.MarkdownStreamingParser
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -11,7 +12,7 @@ public class MarkdownParserBuilder {
     private var finishedHandler: (suspend (String) -> Unit)? = null
     private var codeBlockHandler: (suspend (String) -> Unit)? = null
     private var lineMatchingHandlers = mutableMapOf<Regex?, suspend (String) -> Unit>()
-    private var tableHandler: (suspend (List<String>, List<String>) -> Unit)? = null
+    private var tableHandler: (suspend (headers: List<String>, row: List<String>) -> Unit)? = null
 
     /**
      * Registers a handler for headers of the specified level.
@@ -33,10 +34,9 @@ public class MarkdownParserBuilder {
 
     /**
      * Registers a handler for table rows (header and data rows).
-     * The handler is triggered line-by-line, and returns the list of cell values for that row.
-     * The table separator line is skipped.
+     * The handler is triggered line-by-line, providing the table headers and current row cells.
      *
-     * @param handler The handler function that receives the parsed cell values for a single row (List<String>).
+     * @param handler The handler function that receives parsed header cells and parsed row values.
      */
     public fun onTable(handler: suspend (headers: List<String>, row: List<String>) -> Unit) {
         tableHandler = handler
@@ -72,20 +72,22 @@ public class MarkdownParserBuilder {
     }
 
     /**
-     * Creates a parser function that processes markdown text and returns a list of result objects.
-     * @return A function that takes markdown text and returns a list of result objects
+     * Creates a parser function that processes markdown text.
+     * @return A suspend function that processes markdown string segments.
      */
     public fun build(): suspend (String) -> Unit {
         return { markdown ->
-            // Split the markdown by lines
-            val lines = markdown.split("\n")
-
             var inCodeBlock = false
-            var codeBlockContent = StringBuilder()
+            val codeBlockContent = StringBuilder()
             var inTable = false
             var tableHeaders: List<String>? = null
 
-            for (line in lines) {
+            var startIndex = 0
+            while (startIndex < markdown.length) {
+                val nextNewLine = markdown.indexOf('\n', startIndex)
+                val endIndex = if (nextNewLine != -1) nextNewLine else markdown.length
+
+                val line = markdown.substring(startIndex, endIndex)
                 val trimmedLine = line.trim()
 
                 var consumedByTable = false
@@ -96,20 +98,24 @@ public class MarkdownParserBuilder {
                 if (!inCodeBlock) {
                     if (inTable) {
                         if (isTableSeparator) {
-                            // Separator line: Ignore but consume
+                            // Table metadata line: consume without processing content
                             consumedByTable = true
                         } else if (isTableContent) {
+                            // Clean defensive substring handling for table content lines
                             val cells = parseTableCells(
-                                line.trimStart().substringAfter('|').trimStart().let { "|${it}" }) // Defensive cleaning
-                            tableHandler?.invoke(tableHeaders!!, cells)
+                                line.trimStart().substringAfter('|').trimStart().let { "|${it}" }
+                            )
+                            tableHeaders?.let { headers ->
+                                tableHandler?.invoke(headers, cells)
+                            }
                             consumedByTable = true
                         } else {
-                            // End of Table: Non-table line found
+                            // Non-table line marks the termination of current table block
                             inTable = false
                             tableHeaders = null
                         }
                     } else if (isTableContent) {
-                        // start of table containing headers
+                        // First encounter with structured table syntax registers headers
                         inTable = true
                         val cells = parseTableCells(trimmedLine)
                         tableHeaders = cells
@@ -121,10 +127,7 @@ public class MarkdownParserBuilder {
                 when {
                     // Handle code block markers
                     isBeginningOfCodeBlock(trimmedLine) -> {
-                        inCodeBlock = handleCodeBlockMarker(
-                            inCodeBlock,
-                            codeBlockContent
-                        )
+                        inCodeBlock = handleCodeBlockMarker(inCodeBlock, codeBlockContent)
                     }
 
                     // Handle content inside code blocks
@@ -133,7 +136,7 @@ public class MarkdownParserBuilder {
                     }
 
                     consumedByTable -> {
-                        // Already handled as part of a table
+                        // Execution handled dynamically by streaming table interceptor block
                     }
 
                     // Handle headers
@@ -151,6 +154,8 @@ public class MarkdownParserBuilder {
                 if (!inCodeBlock && !isBeginningOfCodeBlock(trimmedLine) && trimmedLine.isNotEmpty()) {
                     processLineMatching(trimmedLine)
                 }
+
+                startIndex = endIndex + 1
             }
 
             // Handle unclosed code block at the end of the document
@@ -175,16 +180,16 @@ public class MarkdownParserBuilder {
         currentlyInCodeBlock: Boolean,
         content: StringBuilder,
     ): Boolean {
-        if (!currentlyInCodeBlock) {
+        return if (!currentlyInCodeBlock) {
             // Start of code block
             // Extract language identifier if present
             content.clear()
-            return true
+            true
         } else {
             // End of code block
             // Invoke the handler with the collected content
             codeBlockHandler?.invoke(content.toString())
-            return false
+            false
         }
     }
 
@@ -279,58 +284,38 @@ public class MarkdownParserBuilder {
          */
         public suspend fun parseStream(markdownStream: Flow<String>) {
             var buffer = ""
-            val lineSeparator = "\n"
 
             markdownStream.collect { chunk ->
                 buffer += chunk
 
-                val lastSeparatorIndex = buffer.lastIndexOf(lineSeparator)
+                // Check if we have a complete entry in the buffer
+                if (buffer.contains("\n# ") || chunk.contains("\n")) {
+                    val sections = buffer.split(Regex("(?=\\n# )"))
+                    for (i in 0 until sections.size - 1) {
+                        var section = sections[i]
 
-                if (lastSeparatorIndex != -1) {
+                        if (section.isEmpty()) continue
 
-                    // 1. Get the last complete line that includes the final '\n'
-                    val completeBlock = buffer.substring(0, lastSeparatorIndex + lineSeparator.length)
+                        if (!section.startsWith("#")) {
+                            // Add the header prefix to ensure proper parsing
+                            section = "# $section"
+                        }
 
-                    // 2. The remainder is the current partial line
-                    var remainder = buffer.substring(lastSeparatorIndex + lineSeparator.length)
-
-                    // 3. Get the last line *within* the completeBlock
-                    val lastCompleteLine = completeBlock.trimEnd().substringAfterLast(lineSeparator).trim()
-
-                    // 4. AGGRESSIVE COLUMN FIX LOGIC
-                    // If the last complete line is a partial table row (e.g., has less than 5 pipes)
-                    // AND the remainder looks like the continuation of a table row
-                    if (countPipes(lastCompleteLine) > 0 && countPipes(lastCompleteLine) < 5) {
-
-                        // We assume this is a broken table row. Append the remainder to the complete block
-                        // and defer parsing until the next chunk, or until a full line is formed.
-
-                        // For simplicity, we just push the whole buffer back together if we suspect a broken row
-                        // and process it in the next chunk, effectively ignoring the current lastSeparatorIndex.
-                        buffer = completeBlock + remainder
-                        return@collect // Skip parser call for now
+                        // Parse the complete section
+                        parser(section)
                     }
 
-                    // If we reach here, the lines are good, or the broken line is the partial one (remainder).
-
-                    // Revert buffer to the remainder for the next loop
-                    buffer = remainder
-
-                    // Parse the now-confirmed complete block
-                    parser(completeBlock)
+                    // Keep only the potentially incomplete last section in the buffer
+                    buffer = sections.last()
                 }
             }
 
-            // Final processing of the remainder buffer
+            // Process any remaining content in the buffer
             if (buffer.isNotEmpty()) {
                 parser(buffer)
             }
 
             finishedHandler?.invoke(buffer)
-        }
-
-        private fun countPipes(line: String): Int {
-            return line.count { it == '|' }
         }
     }
 }
@@ -349,6 +334,6 @@ public fun markdownParser(config: MarkdownParserBuilder.() -> Unit): suspend (St
  * @param collector The configuration function for the parser builder
  * @return A function that takes a flow of markdown chunks and returns a flow of result objects
  */
-public fun markdownStreamingParser(collector: MarkdownParserBuilder.() -> Unit): MarkdownParserBuilder.MarkdownStreamingParser {
+public fun markdownStreamingParser(collector: MarkdownParserBuilder.() -> Unit): MarkdownStreamingParser {
     return MarkdownParserBuilder().apply(collector).buildStreaming()
 }
